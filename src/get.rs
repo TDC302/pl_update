@@ -1,3 +1,4 @@
+use crate::find_ffmpeg;
 use crate::find_yt_dl;
 use crate::OptionArgs;
 
@@ -25,7 +26,7 @@ use std::thread::JoinHandle;
 
 pub fn pl_get(options: OptionArgs) -> std::io::Result<()> {
 
-    
+
     const FILE_EXT: &str = ".mp3";
 
     let mut bytes_read;
@@ -173,7 +174,21 @@ pub fn pl_get(options: OptionArgs) -> std::io::Result<()> {
 
     }
 
-    let command_name = find_yt_dl(options.verbose)?;
+    let ffmpeg_command;
+
+    if !options.ffmpeg_command.is_none() {
+        output_args.push("--ffmpeg-location".to_owned());
+        output_args.push(options.ffmpeg_command.to_owned().unwrap());
+        ffmpeg_command = options.ffmpeg_command.unwrap();
+    } else {
+        ffmpeg_command = "ffmpeg".to_owned();
+    }
+
+    find_ffmpeg(options.verbose, &ffmpeg_command)?;
+
+
+    let command_name = options.yt_dl_command.unwrap_or("yt-dlp".to_owned());
+    find_yt_dl(options.verbose, &command_name)?;
 
     
     

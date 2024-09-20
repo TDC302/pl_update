@@ -80,12 +80,11 @@ struct OptionArgs {
     pub help: bool,
     pub url: String,
     pub yt_dl_args: Vec<String>,
+    pub yt_dl_command: Option<String>,
+    pub ffmpeg_command: Option<String>
 }
 
 impl OptionArgs {
-    // pub fn new() -> OptionArgs {
-    //     OptionArgs { verbose: false, quiet: false, device: "".to_string(), help: false, url: "".to_string()}
-    // }
 
     pub fn from_string_vec(args: Vec<String>) -> Result<OptionArgs, String> {
         let mut verbose = false;
@@ -94,6 +93,8 @@ impl OptionArgs {
         let mut device = String::from_str("").unwrap();
         let mut url = String::from_str("").unwrap();
         let mut yt_dl_args = Vec::new();
+        let mut yt_dl_command = None;
+        let mut ffmpeg_command = None;
 
         for opt in args {
             
@@ -118,6 +119,20 @@ impl OptionArgs {
                     yt_dl_args.push(opt.split_once("=").expect("opt should contain =").1.to_string());
                     
                 }
+            } else if opt.starts_with("--ytdl-location") {
+                if !opt.starts_with("--ytdl-location=") {
+                    Err("Specified the --ytdl-location option but did not specify the location.")?
+                } else {
+                    yt_dl_command = Some(opt.split_once("=").expect("opt should contain =").1.to_string())
+                    
+                }
+            } else if opt.starts_with("--ffmpeg-location") {
+                if !opt.starts_with("--ffmpeg-location=") {
+                    Err("Specified the --ffmpeg-location option but did not specify the location.")?
+                } else {
+                    ffmpeg_command = Some(opt.split_once("=").expect("opt should contain =").1.to_string())
+                    
+                }
             } else {
                 match opt.as_str() {
                     "--verbose" | "-v" => verbose = true,
@@ -129,7 +144,7 @@ impl OptionArgs {
 
         }
 
-        Ok(OptionArgs{verbose, quiet, help, device_id: device, url, yt_dl_args})
+        Ok(OptionArgs{verbose, quiet, help, device_id: device, url, yt_dl_args, yt_dl_command, ffmpeg_command})
 
     }
 }
@@ -145,16 +160,6 @@ enum CommandArg {
 }
 
 impl CommandArg {
-    // pub fn as_str(&self) -> &'static str {
-    //     use CommandArg::*;
-    //     match self {
-    //         Update => "update",
-    //         Get => "get",
-    //         Init => "init",
-    //         Repair => "repair"
-    //     }
-    // }
-
     pub fn from_string(s: String) -> Result<Self, ()> {
         use CommandArg::*;
         match s.to_lowercase().as_str() {
@@ -172,15 +177,11 @@ impl CommandArg {
 
 
 fn main() -> std::io::Result<()> {
-    
-    
-
-
     let time: chrono::DateTime<Local> =  SystemTime::now().into();
     let info = os_info::get();
 
     const SW_MAJOR: u16 = 2;
-    const SW_MINOR: u16 = 0;
+    const SW_MINOR: u16 = 1;
     const SW_PATCH: u32 = 0;
 
     
@@ -346,24 +347,24 @@ fn process_args(args: Vec<String>) -> std::io::Result<(CommandArg, OptionArgs)> 
 
 }
 
-fn find_yt_dl(verbose: bool) -> Result<String, Error> {
+fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
 
-    let prog_names = ["youtube-dl", "yt-dlp", "yt-dl"];
+    //let prog_names = ["yt-dlp", "youtube-dl", "yt-dl"];
 
-    for name in prog_names {
-        let ytdl_check: Result<std::process::Output, Error> = Command::new(name).arg("--version").output();
+   
+    let ytdl_check: Result<std::process::Output, Error> = Command::new(ytdl_command.clone()).arg("--version").output();
+    
+    if ytdl_check.is_ok() {
+        let out = &ytdl_check.unwrap().stdout;
+        let ver = str::from_utf8(out).unwrap();
+        if verbose {
+            println!("{} [pl-update] Found {} version {}", "DEBUG:".blue(), ytdl_command, ver);
+        }
+        return Ok(());
         
-        if ytdl_check.is_ok() {
-            let out = &ytdl_check.unwrap().stdout;
-            let ver = str::from_utf8(out).unwrap();
-            if verbose {
-                println!("{} [pl-update] Found {} version {}", "DEBUG:".blue(), name, ver);
-            }
-            return Ok(name.to_string());
-            
-        } 
+    } 
         
-    }
+    
     
 
     pl_update_fatal_error!("YT-DL could not be found. Check that it is in the system path or current directory and is accessible.");
@@ -372,4 +373,25 @@ fn find_yt_dl(verbose: bool) -> Result<String, Error> {
     //command_name.unwrap().to_string();
 }
 
+fn find_ffmpeg(verbose: bool, ffmpeg_command: &String) -> Result<(), Error> {
+
+
+
+    let ffmpeg_check: Result<std::process::Output, Error> = Command::new(ffmpeg_command.clone()).arg("--version").output();
+        
+        if ffmpeg_check.is_ok() {
+            let out = &ffmpeg_check.unwrap().stdout;
+            let out_data = str::from_utf8(out).unwrap().split(" ").collect::<Vec<_>>();
+            let ver = out_data.get(2).unwrap();
+            if verbose {
+                println!("{} [pl-update] Found {} version {}", "DEBUG:".blue(), ffmpeg_command, ver);
+            }
+            return Ok(());
+            
+        } 
+
+    pl_update_fatal_error!("YT-DL could not be found. Check that it is in the system path or current directory and is accessible.");
+
+
+}
 
