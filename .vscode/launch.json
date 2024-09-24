@@ -7,11 +7,11 @@
 
 
         {
-            "type": "lldb",
+            "type": "cppvsdbg",
             "request": "launch",
             "name": "Debug w/ url",
             "program": "${workspaceFolder}\\target\\debug\\PL-Update",
-            "args": [ "https://music.youtube.com/playlist?list=PLH6IRFFKb-pdo2XuNTHSc6xHV-6q25cZp&si=GbekZ-1o_JDWw7-w" ],
+            "args": [ "update", "-v", "-t=music mmmm" ],
             "cwd": "${workspaceFolder}"
         },
         {
