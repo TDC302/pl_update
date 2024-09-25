@@ -2,7 +2,6 @@ use chrono::Local;
 use colored::Colorize;
 use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::Error, time::SystemTime};
 
-
 use crate::{download, parse_manifest, pl_update_fatal_error, update_manifest, Args};
 
 
@@ -10,7 +9,6 @@ use crate::{download, parse_manifest, pl_update_fatal_error, update_manifest, Ar
 
 pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<(), Error>{
 
-    
     macro_rules! pl_update_vprintln {
         ($($x:expr),*) => {
             if options.verbose {
@@ -45,7 +43,7 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
         match set_current_dir(playlist_name.unwrap().clone()) {
             Ok(()) => (),
             Err(err) => {
-                pl_update_fatal_error!("Could not find playlist directory: {}", err);
+                pl_update_fatal_error!(err.kind(), "Could not find playlist directory: {}", err);
             }
 
         }
@@ -54,13 +52,16 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
     let time: chrono::DateTime<Local> =  SystemTime::now().into();
     let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S%.f"));
 
-    fs::rename("playlist.manifest", old_playlist_filename.clone())?;
+    match fs::rename("playlist.manifest", old_playlist_filename.clone()) {
+        Ok(()) => {},
+        Err(e) => {pl_update_fatal_error!(e.kind(), "Could not rename old playlist manifest: {}", e);}
+    };
 
 
     let old_manifest = match OpenOptions::new().read(true).write(true).create(true).open(old_playlist_filename) {
         Ok(val) => val,
         Err(err) => {
-            pl_update_fatal_error!("Could not open playlist manifest: {}", err);
+            pl_update_fatal_error!(err.kind(), "Could not open playlist manifest: {}", err);
         }
     }; 
      

@@ -22,7 +22,7 @@ use std::time::SystemTime;
 
 
 
-pub fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Result<()> {
+pub(crate) fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Result<()> {
 
 
     const FILE_EXT: &str = ".mp3";
@@ -63,7 +63,7 @@ pub fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Resul
         match set_current_dir(playlist_name.clone().unwrap()) {
             Ok(()) => (),
             Err(err) => {
-                pl_update_fatal_error!("Could not find playlist directory: {}", err);
+                pl_update_fatal_error!(err.kind(), "Could not find playlist directory: {}", err);
             }
 
         }
@@ -136,10 +136,10 @@ pub fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Resul
         Ok(()) => (),
         Err(e) => {
             if e.kind() == ErrorKind::NotFound {
-                pl_update_fatal_error!("The directory does not have an existing manifest, either run pl-update with the INIT command, or rename an old manifest to 'playlist.manifest'");
+                pl_update_fatal_error!(ErrorKind::NotFound, "The directory does not have an existing manifest, either run pl-update with the INIT command, or rename an old manifest to 'playlist.manifest'");
 
             } else {
-                pl_update_fatal_error!("{e}");
+                pl_update_fatal_error!(e.kind(), "Could not rename playlist.manifest: {}", e);
             }
         }
     }

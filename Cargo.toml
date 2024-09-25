@@ -4,7 +4,7 @@ version = "3.1.1"
 edition = "2021"
 authors = ["Thomas Carver <thomas.carver@nova-labs.org>"]
 repository = "https://github.com/TDC302/pl_update"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -26,7 +26,7 @@ use crate::pl_update_fatal_error;
 
 
 
-pub fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> {
+pub(crate) fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> {
     macro_rules! pl_update_vprintln {
         ($($x:expr),*) => {
             if options.verbose {
@@ -101,7 +101,7 @@ pub fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> {
 
     
     if playlist_name == "NA" {
-        pl_update_fatal_error!("URL provided was not a playlist, or playlist name was NA (playlist name cannot be NA)");
+        pl_update_fatal_error!(ErrorKind::InvalidInput, "URL provided was not a playlist, or playlist name was NA (playlist name cannot be NA)");
     } else if playlist_name.contains('\n') {
         panic!();
     }
@@ -110,7 +110,7 @@ pub fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> {
     match read_dir(playlist_name) {
         Ok(directory) => {
             if directory.count() > 0 {
-                pl_update_fatal_error!("Directory \"{}\" already exists, and is not empty.", playlist_name);
+                pl_update_fatal_error!(ErrorKind::AlreadyExists, "Directory \"{}\" already exists, and is not empty.", playlist_name);
             } else {
                 pl_update_vprintln!("Using existing directory \"{}\"", playlist_name);
             }
@@ -120,7 +120,7 @@ pub fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> {
                 create_dir(playlist_name)?;
                 pl_update_vprintln!("Created directory \"{}\"", playlist_name);
             } else {
-                pl_update_fatal_error!("Could not open {} directory: {}", playlist_name, e);
+                pl_update_fatal_error!(e);
             }
         }
     }

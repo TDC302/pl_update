@@ -8,7 +8,7 @@ mod init;
 mod update;
 mod repair;
 
-
+use std::io::ErrorKind;
 use core::str;
 use std::fmt::Debug;
 use std::{env, thread};
@@ -52,16 +52,34 @@ macro_rules! pl_update_error {
 
 #[macro_export]
 macro_rules! pl_update_fatal_error {
-    ($($x:expr),*) => {
+    ($ekind:expr, $($e:expr),*) => {
 
         let emsg = format!(
             $(
-                $x,
+                $e,
             )*
         );
-        eprintln!("\n{} [pl-update] {}\n In: {} Line: {}\n", "FATAL ERROR:".red().bold(), emsg, file!(), line!());
         
-        return Err(Error::new(std::io::ErrorKind::Other, emsg));
+        let kind = $ekind;
+
+        #[cfg(debug_assertions)]
+        return Err(Error::new(kind, format!("{}\nFile: {}, Line: {}", emsg, file!(), line!())));
+
+        #[cfg(not(debug_assertions))]
+        return Err(Error::new(kind, emsg));
+        
+    
+    };
+
+    ($err:tt) => {
+
+        #[cfg(debug_assertions)]
+        let emsg = format!("{}\nFile: {}, Line: {}", $err.to_string(), file!(), line!());
+        
+        #[cfg(not(debug_assertions))]
+        let emsg = $err.to_string();
+
+        return Err(Error::new($err.kind(), emsg));
         
     
     };
@@ -208,7 +226,9 @@ fn main() -> std::io::Result<()> {
 
     let ver = env!("CARGO_PKG_VERSION");
 
+    #[cfg(debug_assertions)] 
     env::set_var("RUST_BACKTRACE", "1");
+
 
     println!("pl_update version {}", ver);
     
@@ -283,6 +303,7 @@ fn main() -> std::io::Result<()> {
         
         },
         Err(e) => {
+            eprintln!("\n{} [pl-update] {}\n", "FATAL ERROR:".red().bold(), e);
             Err(e)
         }
     }
@@ -307,12 +328,12 @@ fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
         }
         return Ok(());
         
-    } 
+    } else {
+        let e = ytdl_check.unwrap_err();
+        pl_update_fatal_error!(e.kind(), "YT-DL could not be launched. Check that it is in the system path or current directory and is accessible. \nReason: {}", e);
+    
+    }
         
-    
-    
-
-    pl_update_fatal_error!("YT-DL could not be found. Check that it is in the system path or current directory and is accessible.");
     
 
 }
@@ -335,7 +356,7 @@ fn find_ffmpeg(verbose: bool, ffmpeg_command: &String) -> Result<(), Error> {
             
         } 
 
-    pl_update_fatal_error!("YT-DL could not be found. Check that it is in the system path or current directory and is accessible.");
+    pl_update_fatal_error!(ErrorKind::NotFound, "FFMPEG could not be found. Check that it is in the system path or current directory and is accessible.");
 
 
 }
@@ -555,7 +576,7 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
 
 
         if !title_.starts_with("title=") || !id_.starts_with("id=") || !url_.starts_with("url=") {
-            pl_update_fatal_error!("Error while parsing playlist manifest at line: {line_num}");
+            pl_update_fatal_error!(ErrorKind::InvalidData, "Error while parsing playlist manifest at line: {line_num}");
         }
 
         let title = title_.split_at("title=".len()).1.to_string();
@@ -575,7 +596,7 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
     }
 
     if line_num <= 1 {
-        pl_update_fatal_error!("Unexpected EOF while parsing playlist manifest.");
+        pl_update_fatal_error!(ErrorKind::UnexpectedEof, "Unexpected EOF while parsing playlist manifest.");
     }
 
 
@@ -680,8 +701,8 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
                 .spawn()?; //Run YTDL as a child process.
 
 
-        if options.verbose {
-            println!("{} [pl-update] Started download thread with id: {}", "DEBUG:".blue(), ytdl_thread.id());
+        if !options.quiet {
+            println!("[pl-update] Started download thread with id: {}", ytdl_thread.id());
         }
 
         let threadid = ytdl_thread.id();
@@ -709,10 +730,33 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
 
 
     let mut recv = rx.recv();
-    while recv.is_ok() {
+    let mut running = true;
+
+    while running {
+        running = false;
+
+        for thread in &output_handlers {
+            if !thread.is_finished() {
+                running = true;
+                break;
+            }
+        }
+
+        if !running {
+            for thread in &err_handlers {
+                if !thread.is_finished() {
+                    running = true;
+                    break;
+                }
+            }
+        }
+
+
         print!("{}", recv.as_ref().unwrap());
         recv = rx.recv();
 
+
+        
     }
 
     let mut songs_in_playlist = 0;
@@ -727,8 +771,8 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
     }
 
     for mut child in ytdl_threads {
-        if options.verbose {
-            println!("{} [pl-update] Closed download thread with id: {}", "DEBUG:".blue(), child.id());
+        if !options.quiet {
+            println!("[pl-update] Closed download thread with id: {}", child.id());
         }
         child.kill()?;
     }

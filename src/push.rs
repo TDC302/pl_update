@@ -19,7 +19,7 @@ use crate::pl_update_fatal_error;
 //use crate::pl_update_error;
 use crate::pl_update_warn;
 
-pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> {
+pub(crate) fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> {
     let mut device_manager;
     let devices;
     let target_device; //Initialize the value to stop the compiler from complaining
@@ -62,12 +62,7 @@ pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> 
     
     match ret {
         Err(e) => {
-            if e.kind() == ErrorKind::NotFound { 
-                pl_update_fatal_error!("Adb tool could not be launched, check that it is installed and is accessible (ie. in the system path or working directory)");
-            } else {
-                pl_update_fatal_error!("{}", e);
-            }
-        
+            pl_update_fatal_error!(e.kind(), "Adb tool could not be launched, check that it is installed and is accessible (ie. in the system path or working directory)\nReason:{e}");
         },
         Ok(t) => device_manager = t,
     }
@@ -79,7 +74,7 @@ pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> 
     devices = device_manager.get_devices()?;
 
     if devices.is_empty() {
-        pl_update_fatal_error!("No devices were available.");
+        pl_update_fatal_error!(ErrorKind::NotFound, "No devices were available.");
 
     }
 
@@ -91,16 +86,15 @@ pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> 
                 if found_device.is_none() {
                     found_device = Some(device);
                 } else {
-                    pl_update_fatal_error!("Devices {} and {} have duplicate ids.", found_device.unwrap(), device);
+                    pl_update_fatal_error!(ErrorKind::AlreadyExists, "Devices {} and {} have duplicate ids.", found_device.unwrap(), device);
                 }
             }
         }
+        
 
-        if found_device.is_some() {
-            target_device = found_device.unwrap();
-        } else {
-            pl_update_fatal_error!("");
-        }
+       
+        target_device = found_device.unwrap();
+        
 
 
     } else {
@@ -111,7 +105,7 @@ pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> 
 
 
             if options.quiet {
-                pl_update_fatal_error!("More than one device was detected, and interactive output was suppressed.");
+                pl_update_fatal_error!(ErrorKind::WouldBlock, "More than one device was detected, and interactive output was suppressed.");
             }
 
             pl_update_println!("\nMore than one device was detected, please select from the following list:");
@@ -160,15 +154,15 @@ pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> 
 
     match status {
         DeviceStatus::Bootloader => panic!(),
-        DeviceStatus::Disconnected => {pl_update_fatal_error!("The {} was disconnected before upload could be completed.", target_device);},
-        DeviceStatus::Unauthorized => {pl_update_fatal_error!("This computer was not given debugging access to the {}.", target_device);},
+        DeviceStatus::Disconnected => {pl_update_fatal_error!(ErrorKind::ConnectionAborted, "The {} was disconnected before upload could be completed.", target_device);},
+        DeviceStatus::Unauthorized => {pl_update_fatal_error!(ErrorKind::PermissionDenied, "This computer was not given debugging access to the {}.", target_device);},
         DeviceStatus::Offline => {
             pl_update_warn!("The {} is offline, attempting to bring online", target_device);
             
             match device_manager.start_offline_device(target_device.clone()) {
                 Ok(_) => {},
                 Err(e) => {
-                    pl_update_fatal_error!("{}",  e); 
+                    pl_update_fatal_error!(e); 
                 },
             }
         }
