@@ -1,7 +1,7 @@
 
 use crate::parse_manifest;
-use crate::OptionArgs;
 
+use crate::Args;
 use crate::SEP_CHAR;
 use colored::Colorize;
 //mod main;
@@ -22,7 +22,7 @@ use std::time::SystemTime;
 
 
 
-pub fn pl_repair(options: OptionArgs) -> std::io::Result<()> {
+pub fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Result<()> {
 
 
     const FILE_EXT: &str = ".mp3";
@@ -59,8 +59,8 @@ pub fn pl_repair(options: OptionArgs) -> std::io::Result<()> {
         };
     }
 
-    if !options.target.is_empty() {
-        match set_current_dir(options.target.clone()) {
+    if playlist_name.is_some() {
+        match set_current_dir(playlist_name.clone().unwrap()) {
             Ok(()) => (),
             Err(err) => {
                 pl_update_fatal_error!("Could not find playlist directory: {}", err);

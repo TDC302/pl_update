@@ -3,12 +3,12 @@ use colored::Colorize;
 use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::Error, time::SystemTime};
 
 
-use crate::{download, update_manifest, parse_manifest, pl_update_fatal_error, OptionArgs};
+use crate::{download, parse_manifest, pl_update_fatal_error, update_manifest, Args};
 
 
 
 
-pub(crate) fn pl_update(options: OptionArgs) -> Result<(), Error>{
+pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<(), Error>{
 
     
     macro_rules! pl_update_vprintln {
@@ -41,8 +41,8 @@ pub(crate) fn pl_update(options: OptionArgs) -> Result<(), Error>{
     }
     
   
-    if !options.target.is_empty() {
-        match set_current_dir(options.target.clone()) {
+    if playlist_name.is_some() {
+        match set_current_dir(playlist_name.unwrap().clone()) {
             Ok(()) => (),
             Err(err) => {
                 pl_update_fatal_error!("Could not find playlist directory: {}", err);
@@ -73,7 +73,7 @@ pub(crate) fn pl_update(options: OptionArgs) -> Result<(), Error>{
 
     let new_manifest = File::create_new("playlist.manifest")?;
 
-    update_manifest(new_manifest, playlist_name, playlist_url, &options)?;
+    update_manifest(new_manifest, playlist_name, &playlist_url, &options)?;
 
     let (new_songs, _, _) = parse_manifest(File::open("playlist.manifest")?)?;
     

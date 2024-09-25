@@ -4,11 +4,12 @@ use std::io::ErrorKind;
 
 
 use crate::adb;
+use crate::Args;
 
 //use adb::AndroidDevice;
 use adb::DeviceManager;
 use adb::DeviceStatus;
-use crate::OptionArgs;
+
 
 use std::io::Error;
 
@@ -18,7 +19,7 @@ use crate::pl_update_fatal_error;
 //use crate::pl_update_error;
 use crate::pl_update_warn;
 
-pub fn pl_push(options: OptionArgs) -> std::io::Result<()> {
+pub fn pl_push(options: Args, device_id: Option<String>) -> std::io::Result<()> {
     let mut device_manager;
     let devices;
     let target_device; //Initialize the value to stop the compiler from complaining
@@ -82,11 +83,11 @@ pub fn pl_push(options: OptionArgs) -> std::io::Result<()> {
 
     }
 
-    if !options.device_id.is_empty() {
+    if device_id.is_some() {
         let mut found_device = None;
 
         for device in devices {
-            if device.identifier == options.device_id {
+            if device.identifier == device_id.clone().unwrap() {
                 if found_device.is_none() {
                     found_device = Some(device);
                 } else {

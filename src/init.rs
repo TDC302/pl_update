@@ -1,5 +1,6 @@
 
 use crate::update_manifest;
+use crate::Args;
 
 use core::str;
 use std::env::set_current_dir;
@@ -24,9 +25,8 @@ use crate::parse_manifest;
 use crate::pl_update_fatal_error;
 
 
-use crate::OptionArgs;
 
-pub fn pl_init(options: OptionArgs) -> Result<(), Error> {
+pub fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> {
     macro_rules! pl_update_vprintln {
         ($($x:expr),*) => {
             if options.verbose {
@@ -59,16 +59,11 @@ pub fn pl_init(options: OptionArgs) -> Result<(), Error> {
     
 
 
-    let playlist_url = options.target.clone();
-    if playlist_url.is_empty() {
-        pl_update_fatal_error!("Playlist url cannot be empty!");
-    }
 
-    let ffmpeg_command;
-    if !options.ffmpeg_command.is_none() {
-        ffmpeg_command = options.ffmpeg_command.clone().unwrap();
-        find_ffmpeg(options.verbose, &ffmpeg_command)?;
-    }
+    let ffmpeg_command = options.ffmpeg_location.clone();
+  
+    find_ffmpeg(options.verbose, &ffmpeg_command)?;
+    
     
 
     let mut output_args = Vec::new();
@@ -88,7 +83,7 @@ pub fn pl_init(options: OptionArgs) -> Result<(), Error> {
     output_args.push("--playlist-items=1".to_owned());
     
     
-    let command_name = options.yt_dl_command.clone().unwrap_or("yt-dlp".to_owned());
+    let command_name = options.yt_dl_location.clone();
     find_yt_dl(options.verbose, &command_name)?;
 
     pl_update_vprintln!("Running {} with arguments {:?}", command_name, output_args);
@@ -141,7 +136,7 @@ pub fn pl_init(options: OptionArgs) -> Result<(), Error> {
 
     pl_update_println!("Fetching contents of playlist \"{playlist_name}\"");
 
-    update_manifest(manifest, playlist_name.to_string(), playlist_url, &options)?;
+    update_manifest(manifest, playlist_name.to_string(), &playlist_url, &options)?;
     pl_update_println!("Manifest created.");
     
     

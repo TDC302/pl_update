@@ -15,11 +15,11 @@ use std::{env, thread};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, Read, Write};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
-use std::str::FromStr;
 use std::sync::mpsc::{self, Sender};
 use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, SystemTime};
 use chrono::Local;
+use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 
@@ -75,93 +75,82 @@ macro_rules! pl_update_ok_exit {
         std::process::exit(0);
     };
 }
+/// Playlist manager for yt-dlp
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Args {
+    // /// The id of the device to push to
+    // #[arg(short, long)]
+    // device_id: String,
 
-#[derive(Debug, Clone)]
-struct OptionArgs {
-    pub verbose: bool,
-    pub quiet: bool,
-    pub device_id: String,
-    pub help: bool,
-    pub target: String,
-    pub yt_dl_args: Vec<String>,
-    pub yt_dl_command: Option<String>,
-    pub ffmpeg_command: Option<String>,
-    pub thread_count: Option<usize>,
-}
+    /// Print extra debugging information
+    #[arg(short, long, default_value_t = false)]
+    verbose: bool,
+
+    /// Suppress output
+    #[arg(short, long, default_value_t = false)]
+    quiet: bool,
 
 
-impl OptionArgs {
+    /// Args to pass to yt-dlp
+    #[arg(long)]
+    yt_dl_args: Vec<String>,
 
-    pub fn from_string_vec(args: Vec<String>) -> Result<OptionArgs, String> {
-        let mut verbose = false;
-        let mut quiet = false;
-        let mut help = false;
-        let mut device = String::from_str("").unwrap();
-        let mut target = String::from_str("").unwrap();
-        let mut yt_dl_args = Vec::new();
-        let mut yt_dl_command = None;
-        let mut ffmpeg_command = None;
-        let mut thread_count = None;
 
-        for opt in args {
-            
-            if opt.starts_with("--device") || opt.starts_with("-d") {
-                if !opt.starts_with("--device=") && !opt.starts_with("-d=") {
-                    Err("Specified the --device option but did not specify device.")?
-                } else {
-                    device = opt.split_once("=").expect("opt should contain =").1.to_string();
-                    
-                }
-            } else if opt.starts_with("--target") || opt.starts_with("-t") {
-                if !opt.starts_with("--target=") && !opt.starts_with("-t=") {
-                    Err("Specified the --target option but did not provide url.")?
-                } else {
-                    target = opt.split_once("=").expect("opt should contain =").1.to_string();
-                    
-                }
-            } else if opt.starts_with("--Xyt-dl") {
-                if !opt.starts_with("--Xyt-dl=") {
-                    Err("Specified the --Xyt-dl option but did not provide any args to pass.")?
-                } else {
-                    yt_dl_args.push(opt.split_once("=").expect("opt should contain =").1.to_string());
-                    
-                }
-            } else if opt.starts_with("--threads") {
-                if !opt.starts_with("--threads=") {
-                    Err("Specified the --threads option but did specify a thread count.")?
-                } else {
-                    thread_count = Some(opt.split_once("=").expect("opt should contain =").1.to_string().parse::<usize>().expect("value should be unsigned int!"));
-                    
-                }
-            } else if opt.starts_with("--ytdl-location") {
-                if !opt.starts_with("--ytdl-location=") {
-                    Err("Specified the --ytdl-location option but did not specify the location.")?
-                } else {
-                    yt_dl_command = Some(opt.split_once("=").expect("opt should contain =").1.to_string())
-                    
-                }
-            } else if opt.starts_with("--ffmpeg-location") {
-                if !opt.starts_with("--ffmpeg-location=") {
-                    Err("Specified the --ffmpeg-location option but did not specify the location.")?
-                } else {
-                    ffmpeg_command = Some(opt.split_once("=").expect("opt should contain =").1.to_string())
-                    
-                }
-            } else {
-                match opt.as_str() {
-                    "--verbose" | "-v" => verbose = true,
-                    "--quiet" | "-q" => quiet = true,
-                    "--help" | "-h" => help = true,
-                    _ => Err("No match for: ".to_owned() + &opt)?
-                }
+    /// The location of yt-dlp
+    #[arg(long, default_value_t = {"yt-dlp".to_string()})] 
+    yt_dl_location: String,
+
+
+    
+    /// The location of yt-dlp
+    #[arg(long, default_value_t = {"ffmpeg".to_string()})] 
+    ffmpeg_location: String,
+
+
+    /// The number of threads to use
+    #[arg(short, long, default_value_t = {
+        let cpu_core_count = match std::thread::available_parallelism() {
+            Ok(val) => val,
+            Err(e) => {
+                pl_update_warn!("Core count unknown, defaulting to single core mode.");
+                return 1.to_string();
             }
+        }.get();
 
+        if cpu_core_count <= 0 {
+            panic!("System has no cpu cores.");
         }
 
-        Ok(OptionArgs{verbose, quiet, help, device_id: device, target, yt_dl_args, yt_dl_command, ffmpeg_command, thread_count})
+        if cpu_core_count >= 24 {
+            cpu_core_count / 4
+        } else if cpu_core_count >= 12 {
+            cpu_core_count / 3
+        } else if cpu_core_count >= 4 {
+            cpu_core_count / 2
+        } else  {
+            1
+        }
+    
+    })]
+    threads: usize,
 
-    }
+
+    #[command(subcommand)]
+    command: Commands
+
+
 }
+
+#[derive(Subcommand, Debug, Clone)]
+enum Commands {
+    Init { playlist_url: String },
+    Update { playlist_name: Option<String> },
+    Repair { playlist_name: Option<String> },
+    Push { device_id: Option<String> }
+}
+
 
 #[derive(Debug, Clone)]
 struct Song {
@@ -191,32 +180,6 @@ impl Song {
 }
 
 
-#[derive(Debug)]
-enum CommandArg {
-    Update,
-    Get,
-    Init,
-    Repair,
-    Push
-
-}
-
-impl CommandArg {
-    pub fn from_string(s: String) -> Result<Self, ()> {
-        use CommandArg::*;
-        match s.to_lowercase().as_str() {
-            "update" => Ok(Update),
-            "get"   => Ok(Get),
-            "init" => Ok(Init),
-            "repair" => Ok(Repair),
-            "push" => Ok(Push),
-            _ => Err(())
-        }
-
-
-    }
-}
-
 const SEP_CHAR: char = '\x06'; 
 
 fn main() -> std::io::Result<()> {
@@ -232,12 +195,12 @@ fn main() -> std::io::Result<()> {
     env::set_var("RUST_BACKTRACE", "1");
 
 
-    let command;
-    let options;
+    
+    let args = Args::parse();
     
     macro_rules! pl_update_println {
         ($($x:expr),*) => {
-            if !options.quiet {
+            if !args.quiet {
                 println!("[pl-update] {}",
                 format! (
                         $(
@@ -252,7 +215,7 @@ fn main() -> std::io::Result<()> {
 
     macro_rules! pl_update_vprintln {
         ($($x:expr),*) => {
-            if options.verbose {
+            if args.verbose {
                 println!("{} [pl-update] {}", "DEBUG:".blue(),
                 format! (
                     $(
@@ -266,9 +229,6 @@ fn main() -> std::io::Result<()> {
     }
 
 
-    let args: Vec<String> = env::args().collect(); //Proccess the command line args.
-
-    (command, options) = process_args(args)?;
 
     pl_update_println!("pl_update version {SW_MAJOR}.{SW_MINOR}.{SW_PATCH}");
     
@@ -277,7 +237,7 @@ fn main() -> std::io::Result<()> {
     } else {
         pl_update_println!("Running on {} version {}", info.os_type(), info.version());
     }
-    
+
     pl_update_println!("Started at system time {}\n", time.format("%+"));
 
 
@@ -285,15 +245,17 @@ fn main() -> std::io::Result<()> {
 
 
     
-    pl_update_vprintln!("Command: {:?}, Options: {:?}", command, options);
+    pl_update_vprintln!("Args: {:?}", args);
+
+    let command = args.command.clone();
  
 
     let ret = match command {
-        CommandArg::Get => todo!(),
-        CommandArg::Init => init::pl_init(options),
-        CommandArg::Push => push::pl_push(options),
-        CommandArg::Repair => repair::pl_repair(options),
-        CommandArg::Update => update::pl_update(options)
+        //Commands::Get => todo!(),
+        Commands::Init { playlist_url } => init::pl_init(args, playlist_url),
+        Commands::Push { device_id } => push::pl_push(args, device_id),
+        Commands::Repair { playlist_name } => repair::pl_repair(args, playlist_name),
+        Commands::Update { playlist_name } => update::pl_update(args, playlist_name)
 
     };
 
@@ -322,97 +284,97 @@ fn main() -> std::io::Result<()> {
 }
 
 
-fn print_usage(){
-    println!("\nUSAGE: pl-update.exe [OPTIONS] URL\n");
-    println!("Type \"pl-update.exe --help\" for more detailed information.")
+// fn print_usage(){
+//     println!("\nUSAGE: pl-update.exe [OPTIONS] URL\n");
+//     println!("Type \"pl-update.exe --help\" for more detailed information.")
     
 
 
-}
+// }
 
-fn print_help(){
-    println!("\nUSAGE: pl-update.exe [OPTIONS] URL\n");
+// fn print_help(){
+//     println!("\nUSAGE: pl-update.exe [OPTIONS] URL\n");
 
-    println!("Options:");
-    println!("\t-h, --help\t\t\t\t\t\tPrint this help text and exit");
-    println!("\t-v, --verbose\t\t\t\t\t\tPrint various debugging information");
-    println!("\t-q, --quiet\t\t\t\t\t\tSuppresses output to warnings and errors only. Not available with --verbose");
-    println!("\t--push-to-device\t\t\t\t\tPushes downloaded songs to connected android device.");
+//     println!("Options:");
+//     println!("\t-h, --help\t\t\t\t\t\tPrint this help text and exit");
+//     println!("\t-v, --verbose\t\t\t\t\t\tPrint various debugging information");
+//     println!("\t-q, --quiet\t\t\t\t\t\tSuppresses output to warnings and errors only. Not available with --verbose");
+//     println!("\t--push-to-device\t\t\t\t\tPushes downloaded songs to connected android device.");
     
 
-}
+// }
 
 
-fn process_args(args: Vec<String>) -> std::io::Result<(CommandArg, OptionArgs)> {
+// fn process_args(args: Vec<String>) -> std::io::Result<(CommandArg, OptionArgs)> {
 
-    //args.remove(0); // The arg at index 0 is the program name and can be removed.
+//     //args.remove(0); // The arg at index 0 is the program name and can be removed.
 
-    let mut command = String::from_str("").unwrap();
-    let mut options: Vec<String> = Vec::new();
+//     let mut command = String::from_str("").unwrap();
+//     let mut options: Vec<String> = Vec::new();
 
     
 
-    let mut i = -1;
-    for arg in args {
-        i += 1;
-        if i == 0 {
-            continue;
-        } else if arg == "" {
-            continue;
-        } else if arg.starts_with("-") {
-            options.push(arg);
-            continue;
+//     let mut i = -1;
+//     for arg in args {
+//         i += 1;
+//         if i == 0 {
+//             continue;
+//         } else if arg == "" {
+//             continue;
+//         } else if arg.starts_with("-") {
+//             options.push(arg);
+//             continue;
             
-        } else if command == "" {
-            command = arg;
-            continue;
+//         } else if command == "" {
+//             command = arg;
+//             continue;
             
-        } else {
-            pl_update_fatal_error!("Argument \"{}\" is not recognised.", arg);
-        }
+//         } else {
+//             pl_update_fatal_error!("Argument \"{}\" is not recognised.", arg);
+//         }
         
-    }
+//     }
 
 
-    let res_opt = OptionArgs::from_string_vec(options);
-    let ret_opt;
+//     let res_opt = OptionArgs::from_string_vec(options);
+//     let ret_opt;
 
-    match res_opt {
-        Ok(val) => ret_opt = val,
-        Err(e) => {pl_update_fatal_error!("{}", e);}
-    }
+//     match res_opt {
+//         Ok(val) => ret_opt = val,
+//         Err(e) => {pl_update_fatal_error!("{}", e);}
+//     }
 
     
 
-    if command == "" && ret_opt.help {
-        print_help();
-        pl_update_ok_exit!();
-    } else if command == "" {
-        print_usage();
-        pl_update_fatal_error!("Command not specified!");
-    }
+//     if command == "" && ret_opt.help {
+//         print_help();
+//         pl_update_ok_exit!();
+//     } else if command == "" {
+//         print_usage();
+//         pl_update_fatal_error!("Command not specified!");
+//     }
  
-    let res_cmd = CommandArg::from_string(command.clone());
-    let ret_cmd;
+//     let res_cmd = CommandArg::from_string(command.clone());
+//     let ret_cmd;
 
-    match res_cmd {
-        Ok(val) => ret_cmd = val,
-        Err(()) => {pl_update_fatal_error!("Command \"{}\" not recognised.", command);}
-    }
-
-
-
-    if ret_opt.verbose && ret_opt.quiet {
-        print_usage();
-        pl_update_fatal_error!("The --quiet option cannot be specified with the --verbose option.");
-    }
+//     match res_cmd {
+//         Ok(val) => ret_cmd = val,
+//         Err(()) => {pl_update_fatal_error!("Command \"{}\" not recognised.", command);}
+//     }
 
 
 
+//     if ret_opt.verbose && ret_opt.quiet {
+//         print_usage();
+//         pl_update_fatal_error!("The --quiet option cannot be specified with the --verbose option.");
+//     }
 
-    Ok((ret_cmd, ret_opt))
 
-}
+
+
+//     Ok((ret_cmd, ret_opt))
+
+// }
 
 fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
 
@@ -445,7 +407,7 @@ fn find_ffmpeg(verbose: bool, ffmpeg_command: &String) -> Result<(), Error> {
 
 
 
-    let ffmpeg_check: Result<std::process::Output, Error> = Command::new(ffmpeg_command.clone()).arg("--version").output();
+    let ffmpeg_check: Result<std::process::Output, Error> = Command::new(ffmpeg_command.clone()).arg("-version").output();
         
         if ffmpeg_check.is_ok() {
             let out = &ffmpeg_check.unwrap().stdout;
@@ -565,12 +527,12 @@ fn parse_ytdl_stdout(mut std_out_reader: BufReader<ChildStdout>, tx: Sender<Stri
 
 }
 
-fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: String, options: &OptionArgs) -> Result<(), Error> {
+fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: &String, options: &Args) -> Result<(), Error> {
 
     manifest.write(format!("playlist_title={}{SEP_CHAR}url={}\n", playlist_title, playlist_url).as_bytes())?;
     
     let mut output_args = Vec::new();
-    let command_name = options.yt_dl_command.clone().unwrap_or("yt-dlp".to_owned());
+    let command_name = &options.yt_dl_location;
 
     if options.verbose {
         output_args.push("--verbose".to_owned());
@@ -708,48 +670,24 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
 }
 
 
-fn download(mut urls: Vec<String>, options: &OptionArgs) -> Result<(), Error> {
+fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
 
-    let cpu_core_count = std::thread::available_parallelism()?.get();
-
-    let mut max_threads;
-
-    let command = options.yt_dl_command.clone().unwrap_or("yt-dlp".to_owned());
-
-    if cpu_core_count <= 0 {
-        panic!("System has {} cpu cores.", cpu_core_count);
-    }
-
-    if options.thread_count.is_some() {
-        max_threads = options.thread_count.unwrap();
-        
-        if max_threads > cpu_core_count {
-            pl_update_warn!("Specified more threads than can be concurrently handled, reccomended maximum is {}.", cpu_core_count);
-        } else if max_threads > cpu_core_count / 2 {
-            pl_update_warn!("Large thread count specified. This may result in reduced system performance.");
-        }
     
 
-    } else if cpu_core_count >= 24 {
-        max_threads = cpu_core_count / 4;
-    } else if cpu_core_count >= 12 {
-        max_threads = cpu_core_count / 3;
-    } else {
-        max_threads = 2;
-    }
-
-    if !options.quiet {
-        println!("Cores available: {cpu_core_count}, Using: {max_threads}");
+    let mut max_threads = options.threads;
+    
+    if !options.quiet && max_threads > 1 {
+        println!("Cores available: {}, Using: {}", std::thread::available_parallelism()?.get() , max_threads);
     }
 
     let mut output_args = vec!["--extract-audio".to_owned(),
         "--audio-format=mp3".to_owned(), "--embed-thumbnail".to_owned(), "--add-metadata".to_owned()];
 
-    if !options.ffmpeg_command.is_none() {
-        output_args.push("--ffmpeg-location".to_owned());
-        output_args.push(options.ffmpeg_command.to_owned().unwrap());
 
-    } 
+    output_args.push("--ffmpeg-location".to_owned());
+    output_args.push(options.ffmpeg_location.to_owned());
+
+ 
 
     if options.verbose {
         output_args.push("--verbose".to_owned());
@@ -820,7 +758,7 @@ fn download(mut urls: Vec<String>, options: &OptionArgs) -> Result<(), Error> {
     for thread_urls in split_url_vecs {
 
 
-        let mut ytdl_thread = Command::new(command.clone())
+        let mut ytdl_thread = Command::new(options.yt_dl_location.clone())
                 .args([output_args.clone(), thread_urls].concat())
                 .stderr(Stdio::piped())
                 .stdout(Stdio::piped()) //Set ytdl to have a piped output so we can use its output later.
