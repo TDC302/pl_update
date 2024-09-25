@@ -77,12 +77,9 @@ macro_rules! pl_update_ok_exit {
 }
 /// Playlist manager for yt-dlp
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = None, author)]
 #[command(propagate_version = true)]
 struct Args {
-    // /// The id of the device to push to
-    // #[arg(short, long)]
-    // device_id: String,
 
     /// Print extra debugging information
     #[arg(short, long, default_value_t = false)]
@@ -145,10 +142,31 @@ struct Args {
 
 #[derive(Subcommand, Debug, Clone)]
 enum Commands {
-    Init { playlist_url: String },
-    Update { playlist_name: Option<String> },
-    Repair { playlist_name: Option<String> },
-    Push { device_id: Option<String> }
+    /// Creates a new directory for a playlist, fetches the playlist manifest
+    /// and downloads all associated songs.
+    Init { 
+        /// The url of the playlist to be downloaded
+        playlist_url: String 
+    },
+    /// Checks playlist for new or removed songs, and downloads/deletes files respectively. 
+    /// Requires a valid manifest containing the playlist url.
+    Update { 
+        /// Optional. If provided the application will use this as the playlist directory.
+        playlist_name: Option<String> 
+    },
+    /// Rebuilds the playlist manifest from the files in the directory. 
+    /// Requires a playlist manifest containing at least the playlist url.
+    Repair { 
+        /// Optional. If provided the application will use this as the playlist directory.
+        playlist_name: Option<String> },
+    /// Will send the files in the playlist to an android device connected on the ADB. 
+    /// Requires the ADB to be installed. 
+    /// If device id is not specified, and there is more than one device connected will prompt
+    /// user to select device.
+    Push { 
+        /// Optional. The device id to send to.
+        device_id: Option<String> 
+    }
 }
 
 
@@ -186,18 +204,26 @@ fn main() -> std::io::Result<()> {
     let time: chrono::DateTime<Local> = SystemTime::now().into();
     let info = os_info::get();
 
-    const SW_MAJOR: u16 = 3;
-    const SW_MINOR: u16 = 0;
-    const SW_PATCH: u32 = 0;
+ 
 
-    
+    let ver = env!("CARGO_PKG_VERSION");
 
     env::set_var("RUST_BACKTRACE", "1");
 
+    println!("pl_update version {}", ver);
+    
+    if info.architecture().is_some() {
+        println!("Running on {} {} for {}", info.os_type(), info.version(), info.architecture().unwrap());
+    } else {
+        println!("Running on {} version {}", info.os_type(), info.version());
+    }
+
+    println!("Started at system time {}\n", time.format("%+"));
 
     
     let args = Args::parse();
     
+
     macro_rules! pl_update_println {
         ($($x:expr),*) => {
             if !args.quiet {
@@ -227,22 +253,6 @@ fn main() -> std::io::Result<()> {
             }
         };
     }
-
-
-
-    pl_update_println!("pl_update version {SW_MAJOR}.{SW_MINOR}.{SW_PATCH}");
-    
-    if info.architecture().is_some() {
-        pl_update_println!("Running on {} {} for {}", info.os_type(), info.version(), info.architecture().unwrap());
-    } else {
-        pl_update_println!("Running on {} version {}", info.os_type(), info.version());
-    }
-
-    pl_update_println!("Started at system time {}\n", time.format("%+"));
-
-
-
-
 
     
     pl_update_vprintln!("Args: {:?}", args);
@@ -284,101 +294,7 @@ fn main() -> std::io::Result<()> {
 }
 
 
-// fn print_usage(){
-//     println!("\nUSAGE: pl-update.exe [OPTIONS] URL\n");
-//     println!("Type \"pl-update.exe --help\" for more detailed information.")
-    
-
-
-// }
-
-// fn print_help(){
-//     println!("\nUSAGE: pl-update.exe [OPTIONS] URL\n");
-
-//     println!("Options:");
-//     println!("\t-h, --help\t\t\t\t\t\tPrint this help text and exit");
-//     println!("\t-v, --verbose\t\t\t\t\t\tPrint various debugging information");
-//     println!("\t-q, --quiet\t\t\t\t\t\tSuppresses output to warnings and errors only. Not available with --verbose");
-//     println!("\t--push-to-device\t\t\t\t\tPushes downloaded songs to connected android device.");
-    
-
-// }
-
-
-// fn process_args(args: Vec<String>) -> std::io::Result<(CommandArg, OptionArgs)> {
-
-//     //args.remove(0); // The arg at index 0 is the program name and can be removed.
-
-//     let mut command = String::from_str("").unwrap();
-//     let mut options: Vec<String> = Vec::new();
-
-    
-
-//     let mut i = -1;
-//     for arg in args {
-//         i += 1;
-//         if i == 0 {
-//             continue;
-//         } else if arg == "" {
-//             continue;
-//         } else if arg.starts_with("-") {
-//             options.push(arg);
-//             continue;
-            
-//         } else if command == "" {
-//             command = arg;
-//             continue;
-            
-//         } else {
-//             pl_update_fatal_error!("Argument \"{}\" is not recognised.", arg);
-//         }
-        
-//     }
-
-
-//     let res_opt = OptionArgs::from_string_vec(options);
-//     let ret_opt;
-
-//     match res_opt {
-//         Ok(val) => ret_opt = val,
-//         Err(e) => {pl_update_fatal_error!("{}", e);}
-//     }
-
-    
-
-//     if command == "" && ret_opt.help {
-//         print_help();
-//         pl_update_ok_exit!();
-//     } else if command == "" {
-//         print_usage();
-//         pl_update_fatal_error!("Command not specified!");
-//     }
- 
-//     let res_cmd = CommandArg::from_string(command.clone());
-//     let ret_cmd;
-
-//     match res_cmd {
-//         Ok(val) => ret_cmd = val,
-//         Err(()) => {pl_update_fatal_error!("Command \"{}\" not recognised.", command);}
-//     }
-
-
-
-//     if ret_opt.verbose && ret_opt.quiet {
-//         print_usage();
-//         pl_update_fatal_error!("The --quiet option cannot be specified with the --verbose option.");
-//     }
-
-
-
-
-//     Ok((ret_cmd, ret_opt))
-
-// }
-
 fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
-
-    //let prog_names = ["yt-dlp", "youtube-dl", "yt-dl"];
 
    
     let ytdl_check: Result<std::process::Output, Error> = Command::new(ytdl_command.clone()).arg("--version").output();
@@ -399,7 +315,6 @@ fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
     pl_update_fatal_error!("YT-DL could not be found. Check that it is in the system path or current directory and is accessible.");
     
 
-    //command_name.unwrap().to_string();
 }
 
 

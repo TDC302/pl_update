@@ -98,7 +98,7 @@ pub fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Resul
 
         if file_name.contains('[') {// If it has an opening bracket
             
-            //song_name = file_name.split_at(file_name.rfind('[').unwrap()).0.trim();
+            
             (song_name, remainder) = file_name.split_at(file_name.rfind('[').unwrap());
             
             
@@ -153,139 +153,6 @@ pub fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Resul
     for i in 0..song_names.len() {
         manifest.write(format!("title={}{SEP_CHAR}id={}{SEP_CHAR}url=\n", song_names.get(i).unwrap(), song_ids.get(i).unwrap()).as_bytes())?;
     }
-
-
-
-    //let rejected_songs_str = rejected_songs.join("|");
-
-
-
-
-    //pl_update_vprintln!("Reject string is: {:?}", rejected_songs_str);
-    
-    
-
-
-    //let output_reader: BufReader<ChildStdout>; 
-    //let err_reader: BufReader<ChildStderr>; 
-
-
-    // let mut output_args = vec![playlist_url, "--extract-audio".to_owned(),
-    //     "--audio-format=mp3".to_owned(), "--embed-thumbnail".to_owned(), "--add-metadata".to_owned()];
-
-    // if options.verbose {
-    //     output_args.push("--verbose".to_owned());
-    // } else if options.quiet {
-    //     output_args.push("--quiet".to_owned());
-    // }
-
-
-
-    // let filter = format!("id !~= {}", rejected_songs_str);
-    // if !rejected_songs_str.is_empty() {
-    //     output_args.push("--match-filter".to_owned());
-    //     output_args.push(filter);
-
-    // }
-
-    // let ffmpeg_command;
-
-    // if !options.ffmpeg_command.is_none() {
-    //     output_args.push("--ffmpeg-location".to_owned());
-    //     output_args.push(options.ffmpeg_command.to_owned().unwrap());
-    //     ffmpeg_command = options.ffmpeg_command.unwrap();
-    // } else {
-    //     ffmpeg_command = "ffmpeg".to_owned();
-    // }
-
-    // find_ffmpeg(options.verbose, &ffmpeg_command)?;
-
-
-    // let command_name = options.yt_dl_command.unwrap_or("yt-dlp".to_owned());
-    // find_yt_dl(options.verbose, &command_name)?;
-
-    
-    
-    // let mut ytdl_download = Command::new(command_name)
-    //     .args(output_args)
-    //     .stderr(Stdio::piped())
-    //     .stdout(Stdio::piped()) //Set ytdl to have a piped output so we can use its output later.
-    //     .spawn()?; //Run YTDL as a child process.
-
-
-
-
-
-    // output_reader = BufReader::new(ytdl_download.stdout.take().unwrap()); //Get a handle to ytdl's output.
-    // err_reader = BufReader::new(ytdl_download.stderr.take().unwrap()); //Get a handle to ytdl's output.
-
-
-    
-
-
-    // let skipped_songs ;
-    // let songs_in_playlist;
-    // let unavailable_songs;
-
-
-    // let (tx, rx) = mpsc::channel();
-
-    // let procid = ytdl_download.id();
-
-    // let tx1 = tx.clone();
-    // let child_err_handler: JoinHandle<Result<i32, String>> = 
-    //                 thread::spawn(move || parse_ytdl_stderr(err_reader, tx1, procid));
-
-    // let child_ytdl_handler: JoinHandle<(i32,i32)> =
-    //                 thread::spawn(move ||  parse_ytdl_stdout(output_reader, tx, procid));
-
-
-    
-
-
-
-    // while !child_err_handler.is_finished() || !child_ytdl_handler.is_finished() {
-        
-        
-    //     print!("{}", rx.recv().unwrap_or("".to_string()));
-
-
-    // }
-
-
-    // (songs_in_playlist, skipped_songs) = child_ytdl_handler.join().expect("Unknown error");
-
-    // unavailable_songs = match child_err_handler.join().expect("Unknown error") {
-    //     Ok(val) => val,
-    //     Err(e) => {pl_update_fatal_error!("{}", e);}
-    // };
-    
-
-
-
-
-
-
-    // ytdl_download.kill()?; //Clean up :)
-
-    
-    // if songs_in_playlist < 0 {
-
-    //     pl_update_println!("Rejected {} songs. Detected {} songs in directory.", skipped_songs, songs_in_dir);
-    //     pl_update_error!("Could not determine number of songs in playlist!");
-
-    // } else {
-    //     pl_update_println!("Successfully downloaded {} of {} songs in playlist. Detected {} songs in directory.", songs_in_playlist - unavailable_songs - skipped_songs, songs_in_playlist, songs_in_dir);
-
-    // }
-
-    
-    // if unavailable_songs > 0 {
-    //     pl_update_warn!("{} songs were unavailable for download.", unavailable_songs);
-    // }
-
-
-
 
 
 
