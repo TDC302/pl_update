@@ -17,7 +17,6 @@ use std::process::Command;
 use colored::Colorize;
 
 use crate::download;
-use crate::find_ffmpeg;
 use crate::find_yt_dl;
 
 use crate::parse_manifest;
@@ -56,21 +55,18 @@ pub(crate) fn pl_init(options: Args, playlist_url: String) -> Result<(), Error> 
         };
     }
 
-    
-
-
-
-    let ffmpeg_command = options.ffmpeg_location.clone();
-  
-    find_ffmpeg(options.verbose, &ffmpeg_command)?;
-    
-    
 
     let mut output_args = Vec::new();
 
     if options.verbose {
         output_args.push("--verbose".to_owned());
         output_args.push("--quiet".to_owned());
+    }
+
+    if options.ffmpeg_location.is_some() {
+        output_args.push("--ffmpeg-location".to_owned());
+        output_args.push(options.ffmpeg_location.to_owned().unwrap());
+    
     }
 
     output_args.push("--simulate".to_owned());

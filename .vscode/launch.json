@@ -10,8 +10,9 @@
             "type": "cppvsdbg",
             "request": "launch",
             "name": "Debug w/ url",
+            "preLaunchTask": "rust: cargo build",
             "program": "${workspaceFolder}\\target\\debug\\PL-Update",
-            "args": [ "update", "-v", "-t=music mmmm" ],
+            "args": ["-v", "update", "music mmmm"],
             "cwd": "${workspaceFolder}"
         },
         {

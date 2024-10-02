@@ -15,7 +15,7 @@ use std::{env, thread};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, Read, Write};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, SyncSender};
 use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, SystemTime};
 use chrono::Local;
@@ -120,8 +120,8 @@ struct Args {
 
     
     /// The location of yt-dlp
-    #[arg(long, default_value_t = {"ffmpeg".to_string()})] 
-    ffmpeg_location: String,
+    #[arg(long)] 
+    ffmpeg_location: Option<String>,
 
 
     /// The number of threads to use
@@ -230,7 +230,11 @@ fn main() -> std::io::Result<()> {
     env::set_var("RUST_BACKTRACE", "1");
 
 
-    println!("pl_update version {}", ver);
+    println!("pl-update version {}", ver);
+
+    #[cfg(debug_assertions)] 
+    println!("Debugging build");
+
     
     if info.architecture().is_some() {
         println!("Running on {} {} for {}", info.os_type(), info.version(), info.architecture().unwrap());
@@ -361,10 +365,10 @@ fn find_ffmpeg(verbose: bool, ffmpeg_command: &String) -> Result<(), Error> {
 
 }
 
-fn parse_ytdl_stderr(mut std_err_reader: BufReader<ChildStderr>, tx: Sender<String>, procid: u32) -> Result<i32, String> {
+fn parse_ytdl_stderr(mut std_err_reader: BufReader<ChildStderr>, tx: SyncSender<String>, procid: u32) -> Result<usize, String> {
     let mut err_str: String = String::new();
     let mut err_bytes_read = 1;
-    let mut unavailable_songs = 0;
+    let mut unavailable_songs: usize = 0;
 
         while err_bytes_read > 0 {
 
@@ -385,7 +389,9 @@ fn parse_ytdl_stderr(mut std_err_reader: BufReader<ChildStderr>, tx: Sender<Stri
 
 
 
-            if err_str.starts_with("[debug] ") {
+            if err_str.is_empty() {
+                out_str = String::new();
+            } else if err_str.starts_with("[debug] ") {
                 out_str = format!("[thread {}] {} [yt-dl] {}", procid, "DEBUG:".blue(), err_str.split_off("[debug] ".len()));
 
             } else if err_str.starts_with("WARNING:") {
@@ -408,57 +414,40 @@ fn parse_ytdl_stderr(mut std_err_reader: BufReader<ChildStderr>, tx: Sender<Stri
             }
             
             tx.send(out_str).unwrap();
-
             err_str.clear();
 
         }
 
+        drop(tx);
     return Ok(unavailable_songs);
 
 
 }
 
-fn parse_ytdl_stdout(mut std_out_reader: BufReader<ChildStdout>, tx: Sender<String>, procid: u32) -> (i32, i32) {
+fn parse_ytdl_stdout(mut std_out_reader: BufReader<ChildStdout>, tx: SyncSender<String>, procid: u32) {
     
 
     let mut bytes_read = 1;
     let mut buffer_str: String = String::new();
-    let mut songs_in_playlist = -1;
-    let mut skipped_songs = 0;
 
     while bytes_read > 0 { //When the output reader returns 0 bytes read, we know ytdl is done.
 
         
-        
-
-        
         bytes_read = std_out_reader.read_line(&mut buffer_str).unwrap(); //Read a line from YTDL's output.
+        if bytes_read > 0 {
 
-        let out_str;
+            let out_str;
 
-        if songs_in_playlist == -1 && buffer_str.starts_with("[youtube:tab] Playlist ") {
-            
-            songs_in_playlist = buffer_str.trim().rsplit_once(" ").unwrap().1.parse().unwrap();
-            
-        } 
-        
-        //YTDL will print the whole reject pattern (which contains every song in the folder) every time it finds a match.
-        //This makes console output unreadable, so this code cuts it off.
-        if buffer_str.contains("not pass filter") {
-            out_str = format!("{}, skipping..\n", buffer_str.split_inclusive("not pass filter").next().unwrap());
-            skipped_songs += 1;
-
-        } else {
             out_str = format!("[thread {}] {}", procid, buffer_str);
 
-        }
-        
-        tx.send(out_str).unwrap();
-        buffer_str.clear();
+            tx.send(out_str).unwrap();
+            buffer_str.clear();
 
+        }
 
     }
-    (songs_in_playlist, skipped_songs)
+
+    drop(tx);
 
 
 }
@@ -506,7 +495,7 @@ fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: &St
 
     let err_reader = BufReader::new(ytdl_process.stderr.take().unwrap());
     let mut out_reader = BufReader::new(ytdl_process.stdout.take().unwrap());
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(2);
     let procid = ytdl_process.id();
     let ytdl_err_handler = thread::spawn(move || parse_ytdl_stderr(err_reader, tx, procid));
 
@@ -564,9 +553,7 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
         }
 
         
-    
 
-        
 
         let vals: Vec<&str> = entry_.split(SEP_CHAR).collect();
 
@@ -609,6 +596,10 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
 fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
 
     
+    let ffmpeg_command = options.ffmpeg_location.clone().unwrap_or("ffmpeg".to_string());
+  
+    find_ffmpeg(options.verbose, &ffmpeg_command)?;
+
 
     let mut max_threads = options.threads;
     
@@ -620,8 +611,11 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
         "--audio-format=mp3".to_owned(), "--embed-thumbnail".to_owned(), "--add-metadata".to_owned()];
 
 
-    output_args.push("--ffmpeg-location".to_owned());
-    output_args.push(options.ffmpeg_location.to_owned());
+    if options.ffmpeg_location.is_some() {
+        output_args.push("--ffmpeg-location".to_owned());
+        output_args.push(options.ffmpeg_location.to_owned().unwrap());
+    
+    }
 
  
 
@@ -685,11 +679,13 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
     }
     
 
-    let (tx, rx) = mpsc::channel::<String>();
+    
 
     let mut ytdl_threads = Vec::new();
     let mut output_handlers = Vec::new();
     let mut err_handlers = Vec::new();
+    
+    let (tx, rx) = mpsc::sync_channel(2);
 
     for thread_urls in split_url_vecs {
 
@@ -713,10 +709,10 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
         let txerr = tx.clone();
         let txout = tx.clone();
 
-        let child_err_handler: JoinHandle<Result<i32, String>> = 
+        let child_err_handler: JoinHandle<Result<usize, String>> = 
                     thread::spawn(move || parse_ytdl_stderr(err_reader, txerr, threadid));
 
-        let child_out_handler: JoinHandle<(i32,i32)> =
+        let child_out_handler: JoinHandle<()> =
                     thread::spawn(move ||  parse_ytdl_stdout(output_reader, txout, threadid));
 
 
@@ -724,62 +720,47 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
         err_handlers.push(child_err_handler);
 
         ytdl_threads.push(ytdl_thread);
-        sleep(Duration::from_secs(1)); //Wait 1s before creating each thread to spread out the load a lil bit
+        sleep(Duration::from_millis(200)); //Wait 1s before creating each thread to spread out the load a lil bit
 
     }
+    
+    drop(tx);
 
 
-    let mut recv = rx.recv();
-    let mut running = true;
-
-    while running {
-        running = false;
-
-        for thread in &output_handlers {
-            if !thread.is_finished() {
-                running = true;
+    loop {
+        match rx.recv() {
+            Ok(recv_string) => {
+                print!("{}", recv_string);
+            },
+            Err(_) => {
                 break;
             }
+
         }
-
-        if !running {
-            for thread in &err_handlers {
-                if !thread.is_finished() {
-                    running = true;
-                    break;
-                }
-            }
-        }
-
-
-        print!("{}", recv.as_ref().unwrap());
-        recv = rx.recv();
-
-
-        
     }
 
-    let mut songs_in_playlist = 0;
+
     let mut unavailable_songs = 0;
 
-    for thread in output_handlers {
-        songs_in_playlist += thread.join().unwrap().0;
-    }
+   
+
 
     for thread in err_handlers {
         unavailable_songs += thread.join().unwrap().unwrap();
     }
 
+    let downloaded_songs = urls.len() - unavailable_songs;
+
     for mut child in ytdl_threads {
         if !options.quiet {
-            println!("[pl-update] Closed download thread with id: {}", child.id());
+           println!("[pl-update] Closed download thread with id: {}", child.id());
         }
         child.kill()?;
     }
 
 
     if !options.quiet {
-        println!("[pl-update] Downloaded {} songs. {} songs were unavailable for download.", songs_in_playlist, unavailable_songs);
+        println!("[pl-update] Downloaded {} songs. {} songs were unavailable for download.", downloaded_songs, unavailable_songs);
     }
 
     Ok(())

@@ -1,6 +1,6 @@
 [package]
 name = "pl-update"
-version = "3.1.2"
+version = "3.1.3"
 edition = "2021"
 authors = ["Thomas Carver <thomas.carver@nova-labs.org>"]
 repository = "https://github.com/TDC302/pl_update"
