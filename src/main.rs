@@ -3,16 +3,16 @@ extern crate os_info;
 
 
 mod push;
-mod adb;
 mod init;
 mod update;
 mod repair;
 
-use std::io::ErrorKind;
-use core::str;
+use std::env::current_dir;
+use std::io::{self, ErrorKind};
+use core::{panic, str};
 use std::fmt::Debug;
 use std::{env, thread};
-use std::fs::File;
+use std::fs::{remove_file, File};
 use std::io::{BufRead, BufReader, Error, Read, Write};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, SyncSender};
@@ -177,11 +177,12 @@ enum Commands {
     Repair { 
         /// Optional. If provided the application will use this as the playlist directory.
         playlist_name: Option<String> },
-    /// Will send the files in the playlist to an android device connected on the ADB. 
-    /// Requires the ADB to be installed. 
+    /// Will send the files in the playlist to a connected media device (Android phone, music player) etc..
     /// If device id is not specified, and there is more than one device connected will prompt
     /// user to select device.
     Push { 
+        /// Optional. If provided the application will use this as the playlist directory.
+        playlist_name: Option<String>,
         /// Optional. The device id to send to.
         device_id: Option<String> 
     }
@@ -197,7 +198,7 @@ struct Song {
 
 impl PartialEq for Song {
     fn eq(&self, other: &Self) -> bool {
-        self.title == other.title && self.id == other.id
+        self.id == other.id
     }
 }
 
@@ -217,6 +218,8 @@ impl Song {
 
 
 const SEP_CHAR: char = '\x06'; 
+
+const FILE_EXT: &str = ".mp3";
 
 fn main() -> std::io::Result<()> {
     let time: chrono::DateTime<Local> = SystemTime::now().into();
@@ -287,7 +290,7 @@ fn main() -> std::io::Result<()> {
     let ret = match command {
         //Commands::Get => todo!(),
         Commands::Init { playlist_url } => init::pl_init(args, playlist_url),
-        Commands::Push { device_id } => push::pl_push(args, device_id),
+        Commands::Push {playlist_name, device_id } => push::pl_push(args, playlist_name, device_id),
         Commands::Repair { playlist_name } => repair::pl_repair(args, playlist_name),
         Commands::Update { playlist_name } => update::pl_update(args, playlist_name)
 
@@ -300,6 +303,7 @@ fn main() -> std::io::Result<()> {
 
     match ret {
         Ok(_) => {
+
             println!("[pl-update] Operation completed in {}m {}s", delta.num_minutes(), delta.num_seconds());
 
 
@@ -342,6 +346,41 @@ fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
 
 }
 
+
+///
+/// This function assumes that the current directory is the playlist directory and may have undefined behavior otherwise
+fn cleanup_old_manifests(options: &Args) -> Result<(), Error> {
+    let files = std::fs::read_dir(current_dir()?)?.collect::<Result<Vec<_>, io::Error>>().unwrap();
+    let mut manifests = Vec::new();
+    for file in files {
+        if file_is_manifest(file.file_name().to_str().unwrap_or_default()) {
+            manifests.push(file);
+        }
+    }
+
+
+    // nothing to do!
+    if manifests.len() < 7 {
+        return Ok(());
+    }
+
+    if !options.quiet {
+        println!("[pl-update] Cleaning up...");
+    }
+
+    manifests.sort_by(|a, b | b.file_name().partial_cmp(&a.file_name()).unwrap());
+
+    while manifests.len() >= 7 {
+        let old_manifest = manifests.pop().expect("list should be at least 7 long");
+        if options.verbose {
+            println!("{} [pl-update] Deleted old manifest {}", "DEBUG:".blue(), old_manifest.file_name().to_str().unwrap());
+        }
+        remove_file(old_manifest.path())?;
+    }
+
+    return Ok(());
+
+}
 
 fn find_ffmpeg(verbose: bool, ffmpeg_command: &String) -> Result<(), Error> {
 
@@ -433,7 +472,17 @@ fn parse_ytdl_stdout(mut std_out_reader: BufReader<ChildStdout>, tx: SyncSender<
     while bytes_read > 0 { //When the output reader returns 0 bytes read, we know ytdl is done.
 
         
-        bytes_read = std_out_reader.read_line(&mut buffer_str).unwrap(); //Read a line from YTDL's output.
+        bytes_read = match std_out_reader.read_line(&mut buffer_str) //Read a line from YTDL's output.
+        {
+            Ok(val) => val,
+            Err(e) => {
+                if e.kind() == ErrorKind::InvalidData { // ignore invalid utf-8
+                    continue;
+                } else {
+                    Err(e).unwrap() // all other errors, panic
+                }
+            }
+        };
         if bytes_read > 0 {
 
             let out_str;
@@ -464,6 +513,7 @@ fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: &St
         output_args.push("--quiet".to_owned());
     }
 
+    output_args.push("--restrict-filenames".to_owned());
     output_args.push("--windows-filenames".to_owned());
     output_args.push("--simulate".to_owned());
     output_args.push("--flat-playlist".to_owned());
@@ -500,10 +550,13 @@ fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: &St
     let ytdl_err_handler = thread::spawn(move || parse_ytdl_stderr(err_reader, tx, procid));
 
     let ytdl_out_handler: JoinHandle<Result<(),Error>> = thread::spawn(move || {
-    let buf = &mut vec![];
-    out_reader.read_to_end(buf)?;
+        let buf = &mut vec![];
+        out_reader.read_to_end(buf)?;
+        let sliced_str = buf.utf8_chunks();
 
-    manifest.write_all(&buf)?;
+        let valid_string = sliced_str.fold(String::new(),|acc, chnk| acc + chnk.valid()); 
+        manifest.write_all(valid_string.as_bytes())?;
+
 
     Ok(())
 
@@ -523,7 +576,6 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
     let mut playlist_title = "".to_string();
     let mut playlist_url = "".to_string();
 
-  
 
     let file_reader = BufReader::new(manifest);
 
@@ -532,12 +584,25 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
     let mut songs = Vec::new();
 
 
+
     let mut line_num = 0;
     for entry in entries {
         line_num += 1;
 
+        let entry_;
 
-        let entry_ = entry?;
+        if let Err(e) = entry {
+            if e.kind() == ErrorKind::InvalidData {
+                pl_update_warn!("Invalid data while parsing manifest line {line_num}!");
+                continue;
+            } else {
+                return Err(e);
+            }
+        } else {
+            entry_ = entry.unwrap();
+        }
+
+       
   
 
         if line_num == 1 {
@@ -595,6 +660,7 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
 
 fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
 
+    let total_songs_count = urls.len();
     
     let ffmpeg_command = options.ffmpeg_location.clone().unwrap_or("ffmpeg".to_string());
   
@@ -604,11 +670,11 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
     let mut max_threads = options.threads;
     
     if !options.quiet && max_threads > 1 {
-        println!("Cores available: {}, Using: {}", std::thread::available_parallelism()?.get() , max_threads);
+        println!("Threads available: {}, Using: {}", std::thread::available_parallelism()?.get() , max_threads);
     }
 
     let mut output_args = vec!["--extract-audio".to_owned(),
-        "--audio-format=mp3".to_owned(), "--embed-thumbnail".to_owned(), "--add-metadata".to_owned()];
+        "--audio-format=mp3".to_owned(), "--embed-thumbnail".to_owned(), "--add-metadata".to_owned(), "--windows-filenames".to_owned()];
 
 
     if options.ffmpeg_location.is_some() {
@@ -631,34 +697,32 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
         output_args.append(&mut user_args);
     }
 
-    let mut urls_per_thread = urls.len() / max_threads;
+    let mut urls_per_thread = (urls.len() as f32 / max_threads as f32).ceil() as usize;
 
-    
     if urls.len() < 3 {
-        urls_per_thread = urls.len();
+        urls_per_thread = urls.len().try_into().unwrap();
         max_threads = 1;
         pl_update_warn!("Less than three urls. Running in single thread mode.");
 
     } else if urls_per_thread < 3 { //If there's less than three urls per thread, decrease the thread count
         max_threads = urls.len() / 3;
-        urls_per_thread = urls.len() / max_threads;
+        urls_per_thread = (urls.len() as f32 / max_threads as f32).ceil() as usize;
         pl_update_warn!("Less than three urls per thread, thread count decreased to {}.", max_threads);
 
     } 
 
 
-    let mut split_url_vecs = Vec::with_capacity(max_threads);
+    let mut split_url_vecs = Vec::with_capacity(max_threads.try_into().unwrap());
 
 
     let mut i = 0;
     let mut range_end;
     while i < max_threads {
 
-        
-        if urls.len() % urls_per_thread == 0 {
-            range_end = urls_per_thread;
+        if urls.len() < urls_per_thread {
+            range_end = urls.len();
         } else {
-            range_end = urls_per_thread + 1;
+            range_end = urls_per_thread;
         }
 
         let thread_urls: Vec<String> = urls.drain(..range_end).collect();
@@ -670,16 +734,15 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
     } 
 
     if urls.len() != 0 {
-        pl_update_warn!("Parser is dumb and dropped {} urls, sorry.", urls.len());
+        pl_update_warn!("Parser dropped {} urls: {:?}", urls.len(), urls);
     }
 
  
     if options.verbose {
-        println!("{} [pl-update] URL vecs for threads {:?}", "DEBUG:".blue(), split_url_vecs);
+        println!("{} [pl-update] Parsed {} URL vecs for threads {:?}", "DEBUG:".blue(), split_url_vecs.len(), split_url_vecs);
     }
     
 
-    
 
     let mut ytdl_threads = Vec::new();
     let mut output_handlers = Vec::new();
@@ -749,7 +812,7 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
         unavailable_songs += thread.join().unwrap().unwrap();
     }
 
-    let downloaded_songs = urls.len() - unavailable_songs;
+    let downloaded_songs = total_songs_count - unavailable_songs;
 
     for mut child in ytdl_threads {
         if !options.quiet {
@@ -765,6 +828,14 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
 
     Ok(())
 
+}
+
+fn file_is_manifest(filename: &str) -> bool {
+    if filename.starts_with("playlist") && filename.ends_with(".manifest") {
+        true
+    } else {
+        false
+    }
 }
 
 

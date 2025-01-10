@@ -1,7 +1,9 @@
 
+use crate::file_is_manifest;
 use crate::parse_manifest;
 
 use crate::Args;
+use crate::FILE_EXT;
 use crate::SEP_CHAR;
 use colored::Colorize;
 //mod main;
@@ -25,7 +27,6 @@ use std::time::SystemTime;
 pub(crate) fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io::Result<()> {
 
 
-    const FILE_EXT: &str = ".mp3";
 
   
 
@@ -69,17 +70,14 @@ pub(crate) fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io
         }
     } 
 
-    const YOUTUBE_ID_LEN: usize = 11; //The length of a youtube ID, these get placed at the end of every file name so...
-                                    //they need to be removed before being set to YTDL.
+    /// The length of a youtube ID.
+    const YOUTUBE_ID_LEN: usize = 11;
 
     //This list contains all files in the target directory.
     let directory_entry = read_dir(".")?.collect::<Result<Vec<_>, io::Error>>().unwrap();
 
     let mut song_ids: Vec<String> = Vec::new();
     let mut song_names = Vec::new();
-
-    //let mut songs_in_dir = 0;
-
     
    
     for file_entry in directory_entry {
@@ -87,10 +85,13 @@ pub(crate) fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io
         let file_name = file_entry.file_name().into_string().expect("File name was not string!");
         let song_name: &str;
         let remainder: &str;
+        
 
+        if file_is_manifest(&file_name) { // skip manifests without warning
+            continue;
+        }
 
-
-        if !file_name.ends_with(FILE_EXT){
+        if !file_name.ends_with(FILE_EXT) {
             pl_update_warn!("Loose file \"{}\" in directory.",  file_name);
             continue;
         }
@@ -130,7 +131,7 @@ pub(crate) fn pl_repair(options: Args, playlist_name: Option<String>) -> std::io
 
 
     let time: chrono::DateTime<Local> =  SystemTime::now().into();
-    let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S%.f"));
+    let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S-r"));
 
     match fs::rename("playlist.manifest", old_playlist_filename.clone()) {
         Ok(()) => (),

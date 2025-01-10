@@ -2,7 +2,7 @@ use chrono::Local;
 use colored::Colorize;
 use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::{Error, ErrorKind}, time::SystemTime};
 
-use crate::{download, parse_manifest, pl_update_fatal_error, pl_update_warn, update_manifest, Args};
+use crate::{cleanup_old_manifests, download, parse_manifest, pl_update_error, pl_update_fatal_error, pl_update_warn, update_manifest, Args};
 
 
 
@@ -52,14 +52,14 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
     let time: chrono::DateTime<Local> =  SystemTime::now().into();
     
 
-    let old_manifest = match OpenOptions::new().read(true).write(true).create(true).open("playlist.manifest") {
+    let current_manifest = match OpenOptions::new().read(true).write(true).create(true).open("playlist.manifest") {
         Ok(val) => val,
         Err(err) => {
             pl_update_fatal_error!(err.kind(), "Could not open playlist manifest: {}", err);
         }
     }; 
      
-    let (old_songs, playlist_name, playlist_url) = parse_manifest(old_manifest)?;
+    let (current_songs, playlist_name, playlist_url) = parse_manifest(current_manifest)?;
 
 
     pl_update_println!("Found playlist: \"{}\"", playlist_name);
@@ -84,7 +84,7 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
     
 
     let removed_songs: Vec<_> = 
-    old_songs.clone().into_iter().filter(|old_song|
+    current_songs.clone().into_iter().filter(|old_song|
     
         !new_songs.contains(old_song)
 
@@ -92,21 +92,21 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
 
     let added_songs: Vec<_> = new_songs.into_iter().filter(|new_song|
 
-        !old_songs.contains(new_song)
+        !current_songs.contains(new_song)
     
     ).collect();
 
-    pl_update_vprintln!("Items to download: {:?}", added_songs);
+    pl_update_vprintln!("Detected {} items to download: {:?}", added_songs.len(), added_songs);
 
     let removed_filenames: Vec<_> = removed_songs.into_iter().map(|f| f.into_filename("mp3".to_owned())).collect();
     let added_urls: Vec<_> = added_songs.into_iter().map(|u| u.url().unwrap()).collect();
 
-    pl_update_vprintln!("Items to remove: {:?}", removed_filenames);
+    pl_update_vprintln!("Detected {} items to remove: {:?}", removed_filenames.len(), removed_filenames);
 
 
     
     if added_urls.len() > 0 {
-        pl_update_println!("Downloading new items...");
+        pl_update_println!("Downloading {} new items...", added_urls.len());
         download(added_urls, &options)?;
     } else {
         pl_update_println!("No items to download.");
@@ -114,9 +114,14 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
     
 
     if removed_filenames.len() > 0 {
-        pl_update_println!("Deleting removed items..."); 
+        pl_update_println!("Deleting {} removed items...", removed_filenames.len()); 
+
         for filename in removed_filenames {
-            remove_file(filename)?;
+            pl_update_println!("Deleting file {}.", &filename);
+
+            if let Err(e) = remove_file(&filename) {
+                pl_update_error!("Error while deleting file \"{}\"\t {}", &filename, e);
+            }
         }
     }  else {
         pl_update_println!("No items to remove.")
@@ -124,7 +129,7 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
 
 
 
-    let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S%.f"));
+    let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S"));
     match fs::rename("playlist.manifest", old_playlist_filename) {
         Ok(()) => {},
         Err(e) => {pl_update_fatal_error!(e.kind(), "Could not rename old playlist manifest: {}", e);}
@@ -135,6 +140,8 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
         Ok(()) => {},
         Err(e) => {pl_update_fatal_error!(e.kind(), "Could not rename new playlist manifest: {}", e);}
     };
+
+    cleanup_old_manifests(&options)?;
 
 
     Ok(())
