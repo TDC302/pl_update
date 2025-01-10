@@ -16,3 +16,4 @@ clap = { version = "4.5.18", features = ["derive"] }
 colored = "2.1.0"
 os_info = "3.8.2"
 regex = "1.10.5"
+winmtp = "0.3.1"
