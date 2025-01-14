@@ -6,13 +6,17 @@ mod push;
 mod init;
 mod update;
 mod repair;
+mod string_parsing;
+mod error;
+mod playlist_settings;
 
 use std::env::current_dir;
 use std::io::{self, ErrorKind};
 use core::{panic, str};
 use std::fmt::Debug;
+use std::path::Path;
 use std::{env, thread};
-use std::fs::{remove_file, File};
+use std::fs::{remove_file, File, OpenOptions};
 use std::io::{BufRead, BufReader, Error, Read, Write};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, SyncSender};
@@ -21,7 +25,9 @@ use std::time::{Duration, SystemTime};
 use chrono::Local;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-
+use playlist_settings::PlaylistSettings;
+use string_parsing::StringExts;
+use widestring::Utf16String;
 
 
 #[macro_export]
@@ -70,7 +76,6 @@ macro_rules! pl_update_fatal_error {
         
     
     };
-
     ($err:tt) => {
 
         #[cfg(debug_assertions)]
@@ -81,8 +86,8 @@ macro_rules! pl_update_fatal_error {
 
         return Err(Error::new($err.kind(), emsg));
         
-    
     };
+
 }
 
 
@@ -103,9 +108,13 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 
-    /// Suppress output
+    /// Suppress output. Also disables interactive promps
     #[arg(short, long, default_value_t = false)]
     quiet: bool,
+
+    /// Disable interactive prompts
+    #[arg(long)]
+    suppress_interactive: bool,
 
 
     /// Args to pass to yt-dlp
@@ -117,8 +126,12 @@ struct Args {
     #[arg(long, default_value_t = {"yt-dlp".to_string()})] 
     yt_dl_location: String,
 
+    /// Args provided to ffmpeg to run on every file after it is downloaded
+    #[arg(long)]
+    postproccessor_args: Vec<String>,
 
-    
+
+
     /// The location of yt-dlp
     #[arg(long)] 
     ffmpeg_location: Option<String>,
@@ -221,7 +234,7 @@ const SEP_CHAR: char = '\x06';
 
 const FILE_EXT: &str = ".mp3";
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let time: chrono::DateTime<Local> = SystemTime::now().into();
     let info = os_info::get();
 
@@ -248,7 +261,7 @@ fn main() -> std::io::Result<()> {
     println!("Started at system time {}\n", time.format("%+"));
 
     
-    let args = Args::parse();
+    let mut args = Args::parse();
     
 
     macro_rules! pl_update_println {
@@ -284,15 +297,18 @@ fn main() -> std::io::Result<()> {
     
     pl_update_vprintln!("Args: {:?}", args);
 
+    if args.quiet {
+        args.suppress_interactive = true;
+    }
+
     let command = args.command.clone();
  
 
-    let ret = match command {
-        //Commands::Get => todo!(),
-        Commands::Init { playlist_url } => init::pl_init(args, playlist_url),
-        Commands::Push {playlist_name, device_id } => push::pl_push(args, playlist_name, device_id),
-        Commands::Repair { playlist_name } => repair::pl_repair(args, playlist_name),
-        Commands::Update { playlist_name } => update::pl_update(args, playlist_name)
+    let ret: Result<(), Box<dyn std::error::Error>> = match command {
+        Commands::Init { playlist_url } => init::pl_init(args, playlist_url).map_err(|e| e.into()),
+        Commands::Push { playlist_name, device_id } => push::pl_push(args, playlist_name, device_id).map_err(|e| e.into()),
+        Commands::Repair { playlist_name } => repair::pl_repair(args, playlist_name).map_err(|e| e.into()),
+        Commands::Update { playlist_name } => update::pl_update(args, playlist_name).map_err(|e| e.into())
 
     };
 
@@ -311,7 +327,7 @@ fn main() -> std::io::Result<()> {
         
         },
         Err(e) => {
-            eprintln!("\n{} [pl-update] {}\n", "FATAL ERROR:".red().bold(), e);
+            eprintln!("\n{} {}\n", "FATAL ERROR:".red().bold(), e);
             Err(e)
         }
     }
@@ -349,18 +365,18 @@ fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
 
 ///
 /// This function assumes that the current directory is the playlist directory and may have undefined behavior otherwise
-fn cleanup_old_manifests(options: &Args) -> Result<(), Error> {
+fn cleanup_old_manifests(options: &Args, old_manifest_count: usize) -> Result<(), Error> {
     let files = std::fs::read_dir(current_dir()?)?.collect::<Result<Vec<_>, io::Error>>().unwrap();
     let mut manifests = Vec::new();
     for file in files {
-        if file_is_manifest(file.file_name().to_str().unwrap_or_default()) {
+        if file_is_manifest(&Utf16String::from_os_string(file.file_name()).unwrap()) {
             manifests.push(file);
         }
     }
 
 
     // nothing to do!
-    if manifests.len() < 7 {
+    if manifests.len() < old_manifest_count {
         return Ok(());
     }
 
@@ -503,7 +519,7 @@ fn parse_ytdl_stdout(mut std_out_reader: BufReader<ChildStdout>, tx: SyncSender<
 
 fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: &String, options: &Args) -> Result<(), Error> {
 
-    manifest.write(format!("playlist_title={}{SEP_CHAR}url={}\n", playlist_title, playlist_url).as_bytes())?;
+    // manifest.write(format!("playlist_title={}{SEP_CHAR}url={}\n", playlist_title, playlist_url).as_bytes())?;
     
     let mut output_args = Vec::new();
     let command_name = &options.yt_dl_location;
@@ -571,10 +587,10 @@ fn update_manifest(mut manifest: File, playlist_title: String, playlist_url: &St
     Ok(())
 }
 
-fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> {
+fn parse_manifest(manifest: File) -> Result<Vec<Song>, Error> {
 
-    let mut playlist_title = "".to_string();
-    let mut playlist_url = "".to_string();
+    //let mut playlist_title = "".to_string();
+    //let mut playlist_url = "".to_string();
 
 
     let file_reader = BufReader::new(manifest);
@@ -591,6 +607,7 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
 
         let entry_;
 
+
         if let Err(e) = entry {
             if e.kind() == ErrorKind::InvalidData {
                 pl_update_warn!("Invalid data while parsing manifest line {line_num}!");
@@ -602,20 +619,17 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
             entry_ = entry.unwrap();
         }
 
-       
-  
-
-        if line_num == 1 {
-            let first: Vec<&str> = entry_.split(SEP_CHAR).collect();
+        // if line_num == 1 {
+        //     let first: Vec<&str> = entry_.split(SEP_CHAR).collect();
             
-            let name_ = first.get(0).expect("manifest should contain '\\x06'");
-            let url_ = first.get(1).expect("manifest should contain '\\x06'");
+        //     let name_ = first.get(0).expect("manifest should contain '\\x06'");
+        //     let url_ = first.get(1).expect("manifest should contain '\\x06'");
 
 
-            playlist_title = name_.split_once("playlist_title=").expect("manifest should contain playlist name").1.to_string();
-            playlist_url = url_.split_once("url=").expect("manifest should contain playlist name").1.to_string();
-            continue;
-        }
+        //     playlist_title = name_.split_once("playlist_title=").expect("manifest should contain playlist name").1.to_string();
+        //     playlist_url = url_.split_once("url=").expect("manifest should contain playlist name").1.to_string();
+        //     continue;
+        // }
 
         
 
@@ -647,13 +661,13 @@ fn parse_manifest(manifest: File) -> Result<(Vec<Song>, String, String), Error> 
 
     }
 
-    if line_num <= 1 {
-        pl_update_fatal_error!(ErrorKind::UnexpectedEof, "Unexpected EOF while parsing playlist manifest.");
-    }
+    // if line_num <= 1 {
+    //     pl_update_fatal_error!(ErrorKind::UnexpectedEof, "Unexpected EOF while parsing playlist manifest.");
+    // }
 
 
 
-    Ok((songs, playlist_title, playlist_url))
+    Ok(songs)
 
 }
 
@@ -830,12 +844,31 @@ fn download(mut urls: Vec<String>, options: &Args) -> Result<(), Error> {
 
 }
 
-fn file_is_manifest(filename: &str) -> bool {
-    if filename.starts_with("playlist") && filename.ends_with(".manifest") {
+fn fetch_settings<P: AsRef<Path>>(path: P, options: &mut Args) -> Result<(String, String, usize), Error> {
+    let file = OpenOptions::new().read(true).open(path)?;
+    let settings = PlaylistSettings::from_file(file)?;
+    if options.postproccessor_args.is_empty() && !settings.postprocessor_args.is_empty() {
+        options.postproccessor_args = settings.postprocessor_args;
+    }
+
+    if options.yt_dl_args.is_empty() && !settings.yt_dl_args.is_empty() {
+        options.yt_dl_args = settings.yt_dl_args;
+    }
+
+    Ok((settings.playlist_name, settings.playlist_url, settings.backup_manifest_count.unwrap_or(7)))
+}
+
+fn file_is_manifest(filename: &Utf16String) -> bool {
+    if (filename.starts_with("playlist".into()) && filename.ends_with(".manifest".into())) || filename == &Utf16String::from_str("playlist-settings.json") {
         true
     } else {
         false
     }
 }
+
+
+
+
+
 
 

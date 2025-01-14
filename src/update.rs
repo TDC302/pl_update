@@ -1,13 +1,13 @@
 use chrono::Local;
 use colored::Colorize;
-use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::{Error, ErrorKind}, time::SystemTime};
+use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::ErrorKind, time::SystemTime};
 
-use crate::{cleanup_old_manifests, download, parse_manifest, pl_update_error, pl_update_fatal_error, pl_update_warn, update_manifest, Args};
-
-
+use crate::{cleanup_old_manifests, download, error::UpdateError, fetch_settings, parse_manifest, pl_update_error, pl_update_warn, update_manifest, Args};
 
 
-pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<(), Error>{
+
+
+pub(crate) fn pl_update(mut options: Args, playlist_name: Option<String>) -> Result<(), UpdateError>{
 
     macro_rules! pl_update_vprintln {
         ($($x:expr),*) => {
@@ -40,10 +40,10 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
     
   
     if playlist_name.is_some() {
-        match set_current_dir(playlist_name.unwrap().clone()) {
+        match set_current_dir(playlist_name.clone().unwrap()) {
             Ok(()) => (),
             Err(err) => {
-                pl_update_fatal_error!(err.kind(), "Could not find playlist directory: {}", err);
+                return Err(UpdateError::DirectoryOpenError(playlist_name.unwrap(), err));
             }
 
         }
@@ -55,11 +55,12 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
     let current_manifest = match OpenOptions::new().read(true).write(true).create(true).open("playlist.manifest") {
         Ok(val) => val,
         Err(err) => {
-            pl_update_fatal_error!(err.kind(), "Could not open playlist manifest: {}", err);
+            return Err(UpdateError::FileOpenError("playlist manifest".to_owned(), err));
         }
     }; 
      
-    let (current_songs, playlist_name, playlist_url) = parse_manifest(current_manifest)?;
+    let current_songs = parse_manifest(current_manifest)?;
+    let (playlist_name, playlist_url, cleanup_count) = fetch_settings("playlist-settings.json", &mut options)?;
 
 
     pl_update_println!("Found playlist: \"{}\"", playlist_name);
@@ -73,14 +74,14 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
                 pl_update_warn!("playlist-new.manifest already exists. This likely indicates a download in progress failed. This file will be overrwritten.");
                 OpenOptions::new().read(true).write(true).open("playlist-new.manifest")?
             } else {
-                pl_update_fatal_error!(e.kind(), "Could not create playlist-new.manifest: {}", e);
+                return Err(UpdateError::FileCreationError("playlist-new.manifest".to_owned(), e));
             }
         }
     };
 
-    update_manifest(new_manifest, playlist_name, &playlist_url, &options).unwrap();
+    update_manifest(new_manifest, playlist_name, &playlist_url, &options)?;
 
-    let (new_songs, _, _) = parse_manifest(File::open("playlist-new.manifest")?)?;
+    let new_songs = parse_manifest(File::open("playlist-new.manifest")?)?;
     
 
     let removed_songs: Vec<_> = 
@@ -130,18 +131,10 @@ pub(crate) fn pl_update(options: Args, playlist_name: Option<String>) -> Result<
 
 
     let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S"));
-    match fs::rename("playlist.manifest", old_playlist_filename) {
-        Ok(()) => {},
-        Err(e) => {pl_update_fatal_error!(e.kind(), "Could not rename old playlist manifest: {}", e);}
-    };
+    fs::rename("playlist.manifest", old_playlist_filename)?;
+    fs::rename("playlist-new.manifest", "playlist.manifest")?;
 
-
-    match fs::rename("playlist-new.manifest", "playlist.manifest") {
-        Ok(()) => {},
-        Err(e) => {pl_update_fatal_error!(e.kind(), "Could not rename new playlist manifest: {}", e);}
-    };
-
-    cleanup_old_manifests(&options)?;
+    cleanup_old_manifests(&options, cleanup_count)?;
 
 
     Ok(())

@@ -7,21 +7,27 @@
 
 
         {
-            "type": "cppvsdbg",
+            "type": "lldb",
             "request": "launch",
-            "name": "Debug w/ url",
-            "preLaunchTask": "rust: cargo build",
-            "program": "${workspaceFolder}\\target\\debug\\PL-Update",
-            "args": ["-v", "update", "music mmmm"],
-            "cwd": "${workspaceFolder}"
+            "name": "Debug push",
+            "cargo": {
+                "args": [
+                    "build"
+                ]
+            },
+            "args": ["-v", "push", "music mmmm"]
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
-            "program": "${workspaceFolder}\\target\\debug\\PL-Update",
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        }
+            "name": "Debug repair",
+            "cargo": {
+                "args": [
+                    "build"
+                ]
+            },
+            "args": ["-v", "repair", "music mmmm"]
+        },
+        
     ]
 }
