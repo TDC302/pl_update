@@ -264,19 +264,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::parse();
     
 
-    macro_rules! pl_update_println {
-        ($($x:expr),*) => {
-            if !args.quiet {
-                println!("[pl-update] {}",
-                format! (
-                        $(
-                            $x,
-                        )*
-                    )
-                )
-            }
-        };
-    }
+    // macro_rules! pl_update_println {
+    //     ($($x:expr),*) => {
+    //         if !args.quiet {
+    //             println!("[pl-update] {}",
+    //             format! (
+    //                     $(
+    //                         $x,
+    //                     )*
+    //                 )
+    //             )
+    //         }
+    //     };
+    // }
     
 
     macro_rules! pl_update_vprintln {
