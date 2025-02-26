@@ -4,11 +4,11 @@ extern crate os_info;
 
 mod push;
 mod init;
-mod update;
 mod repair;
 mod string_parsing;
 mod error;
 mod playlist_settings;
+mod app;
 
 use std::env::current_dir;
 use std::io::{self, ErrorKind};
@@ -22,7 +22,7 @@ use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, SyncSender};
 use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, SystemTime};
-use chrono::Local;
+use app::App;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use playlist_settings::PlaylistSettings;
@@ -30,31 +30,6 @@ use string_parsing::StringExts;
 use widestring::Utf16String;
 
 
-#[macro_export]
-macro_rules! pl_update_warn {
-    ($($x:expr),*) => {
-        eprintln!("{} [pl-update] {}", "WARNING:".yellow(),
-        format! (
-            $(
-                $x,
-            )*
-        )
-        )
-    };
-}
-
-#[macro_export]
-macro_rules! pl_update_error {
-    ($($x:expr),*) => {
-        eprintln!("{} [pl-update] {}", "ERROR:".red().bold(),
-        format! (
-            $(
-                $x,
-            )*
-        )
-        )
-    };
-}
 
 #[macro_export]
 macro_rules! pl_update_fatal_error {
@@ -98,108 +73,8 @@ macro_rules! pl_update_ok_exit {
         std::process::exit(0);
     };
 }
-/// Playlist manager for yt-dlp
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None, author)]
-#[command(propagate_version = true)]
-struct Args {
-
-    /// Print extra debugging information
-    #[arg(short, long, default_value_t = false)]
-    verbose: bool,
-
-    /// Suppress output. Also disables interactive promps
-    #[arg(short, long, default_value_t = false)]
-    quiet: bool,
-
-    /// Disable interactive prompts
-    #[arg(long)]
-    suppress_interactive: bool,
 
 
-    /// Args to pass to yt-dlp
-    #[arg(long)]
-    yt_dl_args: Vec<String>,
-
-
-    /// The location of yt-dlp
-    #[arg(long, default_value_t = {"yt-dlp".to_string()})] 
-    yt_dl_location: String,
-
-    /// Args provided to ffmpeg to run on every file after it is downloaded
-    #[arg(long)]
-    postproccessor_args: Vec<String>,
-
-
-
-    /// The location of yt-dlp
-    #[arg(long)] 
-    ffmpeg_location: Option<String>,
-
-
-    /// The number of threads to use
-    #[arg(short, long, default_value_t = {
-        let cpu_core_count = match std::thread::available_parallelism() {
-            Ok(val) => val,
-            Err(e) => {
-                pl_update_warn!("Core count unknown, defaulting to single core mode.");
-                return 1.to_string();
-            }
-        }.get();
-
-        if cpu_core_count <= 0 {
-            panic!("System has no cpu cores.");
-        }
-
-        if cpu_core_count >= 24 {
-            cpu_core_count / 4
-        } else if cpu_core_count >= 12 {
-            cpu_core_count / 3
-        } else if cpu_core_count >= 4 {
-            cpu_core_count / 2
-        } else  {
-            1
-        }
-    
-    })]
-    threads: usize,
-
-
-    #[command(subcommand)]
-    command: Commands
-
-
-}
-
-#[derive(Subcommand, Debug, Clone)]
-enum Commands {
-    /// Creates a new directory for a playlist, fetches the playlist manifest
-    /// and downloads all associated songs.
-    Init { 
-        /// The url of the playlist to be downloaded
-        playlist_url: String 
-    },
-    /// Checks playlist for new or removed songs, and downloads/deletes files respectively. 
-    /// Requires a valid manifest containing the playlist url.
-    Update { 
-        /// Optional. If provided the application will use this as the playlist directory.
-        playlist_name: Option<String> 
-    },
-    /// Rebuilds the playlist manifest from the files in the directory. 
-    /// Requires a playlist manifest containing at least the playlist url.
-    Repair { 
-        /// Optional. If provided the application will use this as the playlist directory.
-        playlist_name: Option<String> },
-    /// Will send the files in the playlist to a connected media device (Android phone, music player) etc..
-    /// If device id is not specified, and there is more than one device connected will prompt
-    /// user to select device.
-    Push { 
-        /// Optional. If provided the application will use this as the playlist directory.
-        playlist_name: Option<String>,
-        /// Optional. The device id to send to.
-        device_id: Option<String> 
-    }
-}
 
 
 #[derive(Debug, Clone)]
@@ -235,106 +110,9 @@ const SEP_CHAR: char = '\x06';
 const FILE_EXT: &str = ".mp3";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let time: chrono::DateTime<Local> = SystemTime::now().into();
-    let info = os_info::get();
 
- 
-
-    let ver = env!("CARGO_PKG_VERSION");
-
-    #[cfg(debug_assertions)] 
-    env::set_var("RUST_BACKTRACE", "1");
-
-
-    println!("pl-update version {}", ver);
-
-    #[cfg(debug_assertions)] 
-    println!("Debugging build");
-
-    
-    if info.architecture().is_some() {
-        println!("Running on {} {} for {}", info.os_type(), info.version(), info.architecture().unwrap());
-    } else {
-        println!("Running on {} version {}", info.os_type(), info.version());
-    }
-
-    println!("Started at system time {}\n", time.format("%+"));
-
-    
-    let mut args = Args::parse();
-    
-
-    // macro_rules! pl_update_println {
-    //     ($($x:expr),*) => {
-    //         if !args.quiet {
-    //             println!("[pl-update] {}",
-    //             format! (
-    //                     $(
-    //                         $x,
-    //                     )*
-    //                 )
-    //             )
-    //         }
-    //     };
-    // }
-    
-
-    macro_rules! pl_update_vprintln {
-        ($($x:expr),*) => {
-            if args.verbose {
-                println!("{} [pl-update] {}", "DEBUG:".blue(),
-                format! (
-                    $(
-                        $x,
-                    )*
-                )
-
-                )
-            }
-        };
-    }
-
-    
-    pl_update_vprintln!("Args: {:?}", args);
-
-    if args.quiet {
-        args.suppress_interactive = true;
-    }
-
-    let command = args.command.clone();
- 
-
-    let ret: Result<(), Box<dyn std::error::Error>> = match command {
-        Commands::Init { playlist_url } => init::pl_init(args, playlist_url).map_err(|e| e.into()),
-        Commands::Push { playlist_name, device_id } => push::pl_push(args, playlist_name, device_id).map_err(|e| e.into()),
-        Commands::Repair { playlist_name } => repair::pl_repair(args, playlist_name).map_err(|e| e.into()),
-        Commands::Update { playlist_name } => update::pl_update(args, playlist_name).map_err(|e| e.into())
-
-    };
-
-    let new_time: chrono::DateTime<Local> = SystemTime::now().into();
-
-    let delta = new_time - time;
-
-
-    match ret {
-        Ok(_) => {
-
-            println!("[pl-update] Operation completed in {}m {}s", delta.num_minutes(), delta.num_seconds());
-
-
-            Ok(())
-        
-        },
-        Err(e) => {
-            eprintln!("\n{} {}\n", "FATAL ERROR:".red().bold(), e);
-            Err(e)
-        }
-    }
-
-
-    
- 
+    let mut app = App::new(Args::parse());
+    app.run()
 
 }
 
@@ -363,7 +141,6 @@ fn find_yt_dl(verbose: bool, ytdl_command: &String) -> Result<(), Error> {
 }
 
 
-///
 /// This function assumes that the current directory is the playlist directory and may have undefined behavior otherwise
 fn cleanup_old_manifests(options: &Args, old_manifest_count: usize) -> Result<(), Error> {
     let files = std::fs::read_dir(current_dir()?)?.collect::<Result<Vec<_>, io::Error>>().unwrap();
