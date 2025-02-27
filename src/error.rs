@@ -40,12 +40,8 @@ pub enum Error {
     #[error("The directory does not have a settings file, either run pl-update with the INIT command, or create a \"playlist-settings.json\" file containing at least your playlist's URL and title")]
     PlaylistUninitialized,
 
-    #[error("The \"{0}\" directory could not be opened. Reason: {1}")]
-    DirectoryOpenError(String, std::io::Error),
     #[error("The {0} file could not be opened. Reason: {1}")]
-    FileOpenError(String, std::io::Error),
-    #[error("The {0} file could not be created. Reason: {1}")]
-    FileCreationError(String, std::io::Error)
+    FileOpenError(String, std::io::Error)
 
 
 }
