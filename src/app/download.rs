@@ -110,10 +110,6 @@ impl App {
     pub(super) fn download(&mut self, mut urls: Vec<String>) -> Result<(), Error> {
 
         let total_songs_count = urls.len();
-        
-        self.find_ffmpeg()?;
-    
-       
         let mut max_threads = self.args.threads;
         
         if !self.args.quiet && max_threads > 1 {
@@ -123,12 +119,6 @@ impl App {
         let mut output_args = vec!["--extract-audio".to_owned(),
             "--audio-format=mp3".to_owned(), "--embed-thumbnail".to_owned(), "--add-metadata".to_owned(), "--windows-filenames".to_owned()];
 
-
-      
-        output_args.push("--ffmpeg-location".to_owned());
-        output_args.push(self.args.ffmpeg_location.to_owned());
-        
-       
 
     
 

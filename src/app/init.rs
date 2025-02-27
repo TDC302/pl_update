@@ -52,10 +52,6 @@ impl App {
             output_args.push("--quiet".to_owned());
         }
 
-        self.find_ffmpeg()?;
-
-        output_args.push("--ffmpeg-location".to_owned());
-        output_args.push(self.args.ffmpeg_location.to_owned());  
 
         output_args.push("--simulate".to_owned());
         output_args.push("--flat-playlist".to_owned());

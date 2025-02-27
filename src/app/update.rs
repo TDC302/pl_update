@@ -37,7 +37,6 @@ impl App {
         }
 
 
-        self.find_ffmpeg()?;
         self.find_yt_dl()?;
     
         if playlist_name.is_some() {

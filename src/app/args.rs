@@ -34,14 +34,9 @@ pub(crate) struct Args {
     pub(crate) yt_dl_location: String,
 
     /// Args provided to ffmpeg to run on every file after it is downloaded
+    /// not implemented
     #[arg(long)]
     pub(crate) postproccessor_args: Vec<String>,
-
-
-
-    /// The location of ffmpeg
-    #[arg(long, default_value_t = {"ffmpeg".to_string()})] 
-    pub(crate) ffmpeg_location: String,
 
 
     /// The number of threads to use

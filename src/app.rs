@@ -1,4 +1,4 @@
-use std::{env::set_current_dir, fs::OpenOptions, io::{self, ErrorKind}, process::Command, str};
+use std::{env::set_current_dir, fs::OpenOptions, str};
 use clap::Parser;
 use colored::Colorize;
 use commands::Commands;
@@ -192,28 +192,6 @@ impl App {
         }
     }
 
-
-
-
-    fn find_ffmpeg(&self) -> Result<(), io::Error> {
-        let ffmpeg_command = self.args.ffmpeg_location.clone();
-        let ffmpeg_check: Result<std::process::Output, io::Error> = Command::new(&ffmpeg_command).arg("-version").output();
-            
-            if ffmpeg_check.is_ok() {
-                let out = &ffmpeg_check.unwrap().stdout;
-                let out_data = str::from_utf8(out).unwrap().split(" ").collect::<Vec<_>>();
-                let ver = out_data.get(2).unwrap();
-                if self.args.verbose {
-                    debug_print!("Found {} version {}", ffmpeg_command, ver);
-                }
-                return Ok(());
-                
-            } 
-
-        fatal_error!(ErrorKind::NotFound, "FFMPEG could not be found. Check that it is in the system path or current directory and is accessible.");
-
-
-    }
 
 
 
