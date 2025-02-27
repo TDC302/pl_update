@@ -1,5 +1,5 @@
 
-use crate::error::InitError;
+use crate::error::Error;
 use crate::playlist_settings::PlaylistSettings;
 
 use core::str;
@@ -18,7 +18,7 @@ use crate::{debug_print, stdout_print};
 use super::App;
 
 impl App {
-    pub(crate) fn init(&mut self, playlist_url: String) -> Result<(), InitError> {
+    pub(crate) fn init(&mut self, playlist_url: String) -> Result<(), Error> {
         
         macro_rules! cnd_print_debug {
             ($($x:tt)*) => {
@@ -82,7 +82,7 @@ impl App {
 
         
         if playlist_name == "NA" {
-            return Err(InitError::InvalidInput)
+            return Err(Error::InvalidInput)
         } else if playlist_name.contains('\n') {
             panic!();
         }
@@ -91,7 +91,7 @@ impl App {
         match read_dir(playlist_name) {
             Ok(directory) => {
                 if directory.count() > 0 {
-                    return Err(InitError::AlreadyExists(playlist_name.to_owned()));
+                    return Err(Error::AlreadyExists(playlist_name.to_owned()));
                 } else {
                     cnd_print_debug!("Using existing directory \"{}\"", playlist_name);
                 }

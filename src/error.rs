@@ -2,7 +2,7 @@ use widestring::error::Utf16Error;
 use winmtp::{error::{AddFileError, CreateFolderError, MtpError}, WindowsError};
 
 #[derive(thiserror::Error, Debug)]
-pub enum PushError {
+pub enum Error {
     #[error("The Media Transfer Protocol encountered an error: {0}")]
     MtpError(#[from] MtpError),
     #[error("A windows system call failed with error: {0}")]
@@ -22,45 +22,23 @@ pub enum PushError {
     #[error("More than one device was detected, and interactive output was supressed.")]
     AmbigousTarget,
     #[error("The target device is not allowing filesystem access, try changing USB permissions or unlocking it.")]
-    AccessDenied,
+    RemoteAccessDenied,
     #[error("The \"{0}\" directory could not be found.")]
-    NotFound(String),
+    RemoteDirectoryNotFound(String),
     #[error("The file \"{0}\" could not be sent to the remote deivce, error: {1}")]
-    FileCreationError(String, AddFileError)
+    RemoteFileCreationError(String, AddFileError),
 
-    
-
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum InitError {
-    #[error("System IO error: {0}")]
-    IoError(#[from] std::io::Error),
-
+   
     #[error("Directory \"{0}\" already exists, and is not empty.")]
     AlreadyExists(String),
     #[error("URL provided was not a playlist, or playlist name was NA (playlist name cannot be NA)")]
-    InvalidInput
-}
+    InvalidInput,
 
-#[derive(thiserror::Error, Debug)]
-pub enum RepairError {
-    #[error("System IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("A system call returned a string with invalid or malformed data. Error: {0}")]
-    EncodingError(#[from] Utf16Error),
     #[error("The playlist settings could not be parsed. Reason: {0}")]
     SettingsParseError(#[from] serde_json::Error),
 
     #[error("The directory does not have a settings file, either run pl-update with the INIT command, or create a \"playlist-settings.json\" file containing at least your playlist's URL and title")]
     PlaylistUninitialized,
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum UpdateError {
-    #[error("System IO error: {0}")]
-    IoError(#[from] std::io::Error),
-
 
     #[error("The \"{0}\" directory could not be opened. Reason: {1}")]
     DirectoryOpenError(String, std::io::Error),

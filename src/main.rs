@@ -14,6 +14,7 @@ use app::App;
 use chrono::Local;
 use colored::Colorize;
 use widestring::Utf16String;
+use crate::error::Error;
 
 
 
@@ -53,7 +54,7 @@ const SEP_CHAR: char = '\x06';
 
 const FILE_EXT: &str = ".mp3";
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Error> {
     let time: chrono::DateTime<Local> = SystemTime::now().into();
     let info = os_info::get();
 

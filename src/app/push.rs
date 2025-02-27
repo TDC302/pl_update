@@ -1,13 +1,12 @@
 use std::env;
 use std::env::current_dir;
-use std::env::set_current_dir;
 use std::fs::read_dir;
 use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
 
-use crate::error::PushError;
+use crate::error::Error;
 use crate::FILE_EXT;
 use crate::string_parsing::StringExts;
 
@@ -26,7 +25,7 @@ use crate::stdout_print;
 use crate::debug_print;
 
 impl App {
-    pub(crate) fn push(&mut self, playlist_name: Option<String>, device_id: Option<String>) -> Result<(), PushError> {
+    pub(crate) fn push(&mut self, playlist_name: Option<String>, device_id: Option<String>) -> Result<(), Error> {
         let mtp_provider;
         let target_device;
 
@@ -66,17 +65,10 @@ impl App {
             };
         }
        
-        let playlist_folder_name: WideUtfString;
+        let playlist_folder_name;
 
         if playlist_name.is_some() {
             playlist_folder_name =  WideUtfString::from(playlist_name.unwrap());
-            match set_current_dir(playlist_folder_name.to_string()) {
-                Ok(()) => (),
-                Err(_) => {
-                    return Err(PushError::NotFound(playlist_folder_name.to_string()))
-                }
-                
-            }
         } else {
             let data: Vec<u16> = current_dir()?.file_name().unwrap().encode_wide().collect();
             playlist_folder_name = WideUtfString::from_vec(data)?;
@@ -87,7 +79,7 @@ impl App {
         match ret {
             Err(e) => {
                 error_print!("The Windows Media Transfer Protocol provider could not be initialized.");
-                return Err(PushError::WindowsError(e));
+                return Err(Error::WindowsError(e));
             },
             Ok(t) => mtp_provider = t,
         }
@@ -98,7 +90,7 @@ impl App {
         let devices = mtp_provider.enumerate_devices().unwrap();
 
         if devices.is_empty() {
-            return Err(PushError::NoDevices);
+            return Err(Error::NoDevices);
         }
 
         if device_id.is_some() {
@@ -117,7 +109,7 @@ impl App {
             if found_device.is_some() {
                 target_device = found_device.unwrap();
             } else {
-                return Err(PushError::DeviceNotFound(device_id.unwrap()));
+                return Err(Error::DeviceNotFound(device_id.unwrap()));
             }
             
             
@@ -131,7 +123,7 @@ impl App {
 
 
                 if self.args.suppress_interactive {
-                    return Err(PushError::AmbigousTarget)
+                    return Err(Error::AmbigousTarget)
                 }
 
                 cnd_print_stdout!("\nMore than one device was detected, please select from the following list:");
@@ -185,7 +177,7 @@ impl App {
 
         let root_stor_directory;
         if children.is_empty() {
-            return Err(PushError::AccessDenied);
+            return Err(Error::RemoteAccessDenied);
         } else if let Some(obj) = children.iter().find(|&dir| WideUtfString::from_ucstring(dir.name()).unwrap().to_lowercase().contains("sd card".into())) {
             root_stor_directory = obj;
         } else {
@@ -196,7 +188,7 @@ impl App {
         if let Some(obj) = root_stor_directory.sub_folders()?.find(|dir| WideUtfString::from_ucstring(dir.name()).unwrap().eq_ignore_case("Music".into())) {
             music_directory = obj;
         } else {
-            return Err(PushError::NotFound("Music".to_string()))
+            return Err(Error::RemoteDirectoryNotFound("Music".to_string()))
         }
         
         let remote_playlist_directory;
@@ -261,7 +253,7 @@ impl App {
         for local_file in local_filenames {
             cnd_print_stdout!("Pushing file \"{local_file}\" to remote.");
             if let Err(e) = remote_playlist_directory.push_file(Path::new(&local_file.as_ustr().to_os_string()), false) {
-                return Err(PushError::FileCreationError(local_file.to_string(), e));
+                return Err(Error::RemoteFileCreationError(local_file.to_string(), e));
             }
         }
 

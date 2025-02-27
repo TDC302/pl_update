@@ -1,8 +1,10 @@
+use std::io::ErrorKind;
 use std::{env::set_current_dir, fs::OpenOptions, str};
 use clap::Parser;
 use colored::Colorize;
 use commands::Commands;
 pub(crate) use args::Args;
+use crate::error::Error;
 
 use crate::playlist_settings::PlaylistSettings;
 
@@ -118,7 +120,7 @@ pub struct App {
 
 impl App {
 
-    pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run() -> Result<(), Error> {
         let mut args = Args::parse();
 
         if args.verbose {
@@ -153,7 +155,13 @@ impl App {
 
             let file = match OpenOptions::new().read(true).open(PLAYLIST_SETTINGS_NAME) {
                 Ok(val) => val,
-                Err(e) => return Err(Box::new(e)),
+                Err( e) =>  {
+                    if e.kind() == ErrorKind::NotFound {
+                        return Err(Error::PlaylistUninitialized);
+                    } else {
+                        return Err(Error::FileOpenError(PLAYLIST_SETTINGS_NAME.to_string(), e))
+                    }
+                }
             };
 
             settings =  PlaylistSettings::from_file(file)?;
@@ -165,7 +173,7 @@ impl App {
             Commands::Init { playlist_url } => app.init(playlist_url).map_err(|e| e.into()),
             Commands::Push { playlist_name, device_id } => app.push(playlist_name, device_id).map_err(|e| e.into()),
             Commands::Repair { playlist_name } => app.repair(playlist_name).map_err(|e| e.into()),
-            Commands::Update { playlist_name } => app.update(playlist_name).map_err(|e| e.into())
+            Commands::Update { .. } => app.update().map_err(|e| e.into())
         }
     
       

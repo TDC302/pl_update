@@ -1,7 +1,7 @@
 use colored::Colorize;
-use std::{env::set_current_dir, fs::remove_file};
+use std::fs::remove_file;
 
-use crate::{error::UpdateError, error_print, debug_print, stdout_print};
+use crate::{error::Error, error_print, debug_print, stdout_print};
 
 use super::App;
 
@@ -10,7 +10,7 @@ use super::App;
 impl App {
 
 
-    pub(super) fn update(&mut self, playlist_name: Option<String>) -> Result<(), UpdateError>{
+    pub(super) fn update(&mut self) -> Result<(), Error>{
 
         macro_rules! cnd_print_debug {
             ($($x:tt)*) => {
@@ -39,15 +39,6 @@ impl App {
 
         self.find_yt_dl()?;
     
-        if playlist_name.is_some() {
-            match set_current_dir(playlist_name.clone().unwrap()) {
-                Ok(()) => (),
-                Err(err) => {
-                    return Err(UpdateError::DirectoryOpenError(playlist_name.unwrap(), err));
-                }
-
-            }
-        } 
 
         let current_items_list = self.fetch_manifest_local()?;
 

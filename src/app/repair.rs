@@ -1,12 +1,11 @@
 
-use crate::error::RepairError;
+use crate::error::Error;
 
 use crate::playlist_settings::PlaylistSettings;
 use colored::Colorize;
 
 use crate::warn_print;
 
-use std::env::set_current_dir;
 use std::fs;
 use std::io;
 use std::io::stdout;
@@ -18,11 +17,8 @@ use super::App;
 impl App {
 
 
-    pub(super) fn repair(&mut self, playlist_name: Option<String>) -> Result<(), RepairError> {
+    pub(super) fn repair(&mut self, playlist_name: Option<String>) -> Result<(), Error> {
 
-        if playlist_name.is_some() {
-            set_current_dir(playlist_name.clone().unwrap())?;
-        } 
 
         match fs::OpenOptions::new().read(true).open("playlist-settings.json") {
             Ok(f) => {
@@ -33,7 +29,7 @@ impl App {
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
                     if self.args.suppress_interactive {
-                        return Err(RepairError::PlaylistUninitialized);
+                        return Err(Error::PlaylistUninitialized);
                     } else {
                         Self::manual_settings(&playlist_name)?;
                     }
