@@ -2,14 +2,13 @@ use clap::Subcommand;
 
 #[derive(Subcommand, Debug, Clone)]
 pub(crate) enum Commands {
-    /// Creates a new directory for a playlist, fetches the playlist manifest
-    /// and downloads all associated songs.
+    /// Creates a new directory for a playlist and downloads all associated songs.
     Init { 
         /// The url of the playlist to be downloaded
         playlist_url: String 
     },
     /// Checks playlist for new or removed songs, and downloads/deletes files respectively. 
-    /// Requires a valid manifest containing the playlist url.
+    /// Requires a valid playlist-settings.json file
     Update { 
         /// Optional. If provided the application will use this as the playlist directory.
         playlist_name: Option<String> 
