@@ -9,16 +9,18 @@ mod app;
 
 
 use core::str;
-use std::fmt::Debug;
-use app::{App, Args};
-use clap::Parser;
+use std::{env, fmt::Debug, time::SystemTime};
+use app::App;
+use chrono::Local;
+use colored::Colorize;
+use widestring::Utf16String;
 
 
 
 #[derive(Debug, Clone)]
 struct Song {
-    title: String,
-    id: String,
+    title: Utf16String,
+    id: Utf16String,
     url: Option<String>,
 }
 
@@ -29,8 +31,12 @@ impl PartialEq for Song {
 }
 
 impl Song {
-    fn new(title: String, id: String, url: Option<String>) -> Self {
+    fn new(title: Utf16String, id: Utf16String, url: Option<String>) -> Self {
         Song {title, id, url}
+    }
+
+    fn new_str(title: String, id: String, url: Option<String>) -> Self {
+        Self { title: title.into(), id: id.into(), url }
     }
 
     fn into_filename(&self, file_ext: String) -> String {
@@ -48,9 +54,48 @@ const SEP_CHAR: char = '\x06';
 const FILE_EXT: &str = ".mp3";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let time: chrono::DateTime<Local> = SystemTime::now().into();
+    let info = os_info::get();
 
-    let mut app = App::new(Args::parse());
-    app.run()
+    let ver = env!("CARGO_PKG_VERSION");
+
+    #[cfg(debug_assertions)] 
+    env::set_var("RUST_BACKTRACE", "1");
+
+
+    println!("pl-update version {}", ver);
+
+    #[cfg(debug_assertions)] 
+    println!("Debugging build");
+
+    
+    if info.architecture().is_some() {
+        println!("Running on {} {} for {}", info.os_type(), info.version(), info.architecture().unwrap());
+    } else {
+        println!("Running on {} version {}", info.os_type(), info.version());
+    }
+
+    println!("Started at system time {}\n", time.format("%+"));
+
+
+    let ret = App::run();
+
+    let new_time: chrono::DateTime<Local> = SystemTime::now().into();
+    
+    let delta = new_time - time;
+
+
+    match ret {
+        Ok(_) => {
+
+            stdout_print!("Operation completed in {}m {}s", delta.num_minutes(), delta.num_seconds());
+            Ok(())
+        },
+        Err(e) => {
+            eprintln!("\n{} {}\n", "FATAL ERROR:".red().bold(), e);
+            Err(e)
+        }
+    }
 
 }
 

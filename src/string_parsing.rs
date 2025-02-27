@@ -1,4 +1,4 @@
-use std::{ffi::OsString, os::windows::ffi::OsStrExt};
+use std::{ffi::OsString, io::{BufRead, BufReader, Read}, os::windows::ffi::OsStrExt};
 
 use widestring::{error::Utf16Error, Utf16Str, Utf16String};
 
@@ -81,6 +81,22 @@ impl StringExts<Utf16String, Utf16Str> for Utf16String {
         } else {
             None
         }
+    }
+}
+
+pub trait ReadtoUtf16String {
+    /// Reads a line from a stream of u8 and interprets it as utf8, deleting any invalid chars
+    fn read_line_lossy(&mut self, str: &mut String) -> Result<usize, std::io::Error>;
+}
+
+impl<R: Read> ReadtoUtf16String for BufReader<R> {
+    fn read_line_lossy(&mut self, str: &mut String) -> Result<usize, std::io::Error> {
+        let buf= &mut vec![];
+        let read = self.read_until(b'\n', buf)?;
+
+        str.push_str(&String::from_utf8_lossy(buf).replace("\u{fffd}", ""));
+
+        Ok(read)
     }
 }
 

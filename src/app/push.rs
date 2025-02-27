@@ -26,7 +26,7 @@ use crate::stdout_print;
 use crate::debug_print;
 
 impl App {
-    pub(crate) fn pl_push(&mut self, playlist_name: Option<String>, device_id: Option<String>) -> Result<(), PushError> {
+    pub(crate) fn push(&mut self, playlist_name: Option<String>, device_id: Option<String>) -> Result<(), PushError> {
         let mtp_provider;
         let target_device;
 

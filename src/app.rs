@@ -1,6 +1,6 @@
-use std::{env::{self}, fs::OpenOptions, io::{self, ErrorKind}, path::Path, process::Command, str, time::SystemTime};
+use std::{env::set_current_dir, fs::OpenOptions, io::{self, ErrorKind}, process::Command, str};
+use clap::Parser;
 use colored::Colorize;
-use chrono::Local;
 use commands::Commands;
 pub(crate) use args::Args;
 
@@ -103,84 +103,72 @@ macro_rules! fatal_error {
 
 }
 
+/// The length of a youtube ID.
+const YOUTUBE_ID_LEN: usize = 11;
 
+/// The filename to use for playlist settings files.
+const PLAYLIST_SETTINGS_NAME: &str = "playlist-settings.json";
 
 
 pub struct App {
     args: Args,
-    settings: Option<PlaylistSettings>
-
+    settings: PlaylistSettings
+    
 }
 
 impl App {
 
+    pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+        let mut args = Args::parse();
 
+        if args.verbose {
+            debug_print!("Args: {:?}", args);
+        }
 
-    pub fn new(args: Args) -> Self {
-        Self { args, settings: None }
-    }
+        if args.quiet {
+            args.suppress_interactive = true;
+        }
 
-  
-    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let time: chrono::DateTime<Local> = SystemTime::now().into();
-        let info = os_info::get();
-    
-        let ver = env!("CARGO_PKG_VERSION");
+        let command = args.command.clone();
 
-        #[cfg(debug_assertions)] 
-        env::set_var("RUST_BACKTRACE", "1");
-
-
-        println!("pl-update version {}", ver);
-
-        #[cfg(debug_assertions)] 
-        println!("Debugging build");
-
-        
-        if info.architecture().is_some() {
-            println!("Running on {} {} for {}", info.os_type(), info.version(), info.architecture().unwrap());
+        let settings;
+        if let Commands::Init { ref playlist_url } = command {
+            settings = PlaylistSettings::new(playlist_url.to_string(), String::new());
         } else {
-            println!("Running on {} version {}", info.os_type(), info.version());
-        }
 
-        println!("Started at system time {}\n", time.format("%+"));
-
-        if self.args.verbose {
-            debug_print!("Args: {:?}", self.args);
-        }
-
-        if self.args.quiet {
-            self.args.suppress_interactive = true;
-        }
-
-        let command = self.args.command.clone();
-
-        let ret: Result<(), Box<dyn std::error::Error>> = match command {
-            Commands::Init { playlist_url } => self.pl_init(playlist_url).map_err(|e| e.into()),
-            Commands::Push { playlist_name, device_id } => self.pl_push(playlist_name, device_id).map_err(|e| e.into()),
-            Commands::Repair { playlist_name } => self.pl_repair(playlist_name).map_err(|e| e.into()),
-            Commands::Update { playlist_name } => self.update(playlist_name).map_err(|e| e.into())
-    
-        };
-    
-        let new_time: chrono::DateTime<Local> = SystemTime::now().into();
-    
-        let delta = new_time - time;
-    
-    
-        match ret {
-            Ok(_) => {
-    
-                stdout_print!("Operation completed in {}m {}s", delta.num_minutes(), delta.num_seconds());
-                Ok(())
-            },
-            Err(e) => {
-                eprintln!("\n{} {}\n", "FATAL ERROR:".red().bold(), e);
-                Err(e)
+            let playlist_name_;
+            if let Commands::Push { ref playlist_name,..} = command {
+                playlist_name_ = playlist_name.clone();
+            } else if let Commands::Update {ref playlist_name} = command {
+                playlist_name_ = playlist_name.clone();
+            } else if let Commands::Repair {ref playlist_name} = command {
+                playlist_name_ = playlist_name.clone();
+            } else {
+                unreachable!();
             }
+            
+            if playlist_name_.is_some() {
+                set_current_dir(playlist_name_.unwrap())?;
+            }
+
+            let file = match OpenOptions::new().read(true).open(PLAYLIST_SETTINGS_NAME) {
+                Ok(val) => val,
+                Err(e) => return Err(Box::new(e)),
+            };
+
+            settings =  PlaylistSettings::from_file(file)?;
+        }
+
+        let mut app = Self {args, settings};
+
+        match command {
+            Commands::Init { playlist_url } => app.init(playlist_url).map_err(|e| e.into()),
+            Commands::Push { playlist_name, device_id } => app.push(playlist_name, device_id).map_err(|e| e.into()),
+            Commands::Repair { playlist_name } => app.repair(playlist_name).map_err(|e| e.into()),
+            Commands::Update { playlist_name } => app.update(playlist_name).map_err(|e| e.into())
         }
     
-
+      
     }
 
 
@@ -207,34 +195,25 @@ impl App {
 
 
 
-fn find_ffmpeg(&self) -> Result<(), io::Error> {
-    let ffmpeg_command = self.args.ffmpeg_location.clone();
-    let ffmpeg_check: Result<std::process::Output, io::Error> = Command::new(&ffmpeg_command).arg("-version").output();
-        
-        if ffmpeg_check.is_ok() {
-            let out = &ffmpeg_check.unwrap().stdout;
-            let out_data = str::from_utf8(out).unwrap().split(" ").collect::<Vec<_>>();
-            let ver = out_data.get(2).unwrap();
-            if self.args.verbose {
-                debug_print!("Found {} version {}", ffmpeg_command, ver);
-            }
-            return Ok(());
+    fn find_ffmpeg(&self) -> Result<(), io::Error> {
+        let ffmpeg_command = self.args.ffmpeg_location.clone();
+        let ffmpeg_check: Result<std::process::Output, io::Error> = Command::new(&ffmpeg_command).arg("-version").output();
             
-        } 
+            if ffmpeg_check.is_ok() {
+                let out = &ffmpeg_check.unwrap().stdout;
+                let out_data = str::from_utf8(out).unwrap().split(" ").collect::<Vec<_>>();
+                let ver = out_data.get(2).unwrap();
+                if self.args.verbose {
+                    debug_print!("Found {} version {}", ffmpeg_command, ver);
+                }
+                return Ok(());
+                
+            } 
 
-    fatal_error!(ErrorKind::NotFound, "FFMPEG could not be found. Check that it is in the system path or current directory and is accessible.");
+        fatal_error!(ErrorKind::NotFound, "FFMPEG could not be found. Check that it is in the system path or current directory and is accessible.");
 
 
-}
-
-
-fn fetch_settings<P: AsRef<Path>>(&mut self, path: P) -> Result<(), io::Error> {
-    let file = OpenOptions::new().read(true).open(path)?;
-    self.settings = Some(PlaylistSettings::from_file(file)?);
-
-    Ok(())
-}
-
+    }
 
 
 

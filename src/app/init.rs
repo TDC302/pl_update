@@ -6,8 +6,6 @@ use core::str;
 use std::env::set_current_dir;
 use std::fs::create_dir;
 use std::fs::read_dir;
-use std::fs::File;
-use std::fs::OpenOptions;
 use std::io::stdout;
 use std::io::ErrorKind;
 use std::io::Write;
@@ -20,7 +18,7 @@ use crate::{debug_print, stdout_print};
 use super::App;
 
 impl App {
-    pub(crate) fn pl_init(&mut self, playlist_url: String) -> Result<(), InitError> {
+    pub(crate) fn init(&mut self, playlist_url: String) -> Result<(), InitError> {
         
         macro_rules! cnd_print_debug {
             ($($x:tt)*) => {
@@ -122,16 +120,9 @@ impl App {
 
         settings.write_to_disk("playlist-settings.json")?;
 
-        let manifest = OpenOptions::new().read(true).write(true).create(true).open("playlist.manifest")?;
-
-        cnd_print_stdout!("Fetching contents of playlist \"{playlist_name}\"");
-
-        self.fetch_manifest_url(manifest, &playlist_name.to_string(), &playlist_url)?;
-        cnd_print_stdout!("Manifest created.");
+        let songs = self.fetch_manifest_url(&playlist_name.to_string(), &playlist_url)?;
         
-        
-        stdout_print!("Parsing urls from manifest...");
-        let songs = Self::fetch_manifest_local(File::open("playlist.manifest")?).unwrap();
+
         let song_urls: Vec<String> = songs.iter().map(|f| f.url.clone().expect("song should have url")).collect();
 
         cnd_print_stdout!("Successfully parsed {} urls from manifest.", song_urls.len());

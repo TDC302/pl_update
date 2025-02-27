@@ -1,8 +1,7 @@
-use chrono::Local;
 use colored::Colorize;
-use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::ErrorKind, time::SystemTime};
+use std::{env::set_current_dir, fs::remove_file};
 
-use crate::{error::UpdateError, error_print, warn_print, debug_print, stdout_print};
+use crate::{error::UpdateError, error_print, debug_print, stdout_print};
 
 use super::App;
 
@@ -51,54 +50,29 @@ impl App {
             }
         } 
 
-        let time: chrono::DateTime<Local> =  SystemTime::now().into();
-        
+        let current_items_list = self.fetch_manifest_local()?;
 
-        let current_manifest = match OpenOptions::new().read(true).write(true).create(true).open("playlist.manifest") {
-            Ok(val) => val,
-            Err(err) => {
-                return Err(UpdateError::FileOpenError("playlist manifest".to_owned(), err));
-            }
-        }; 
-        
-        let current_songs = Self::fetch_manifest_local(current_manifest)?;
-        self.fetch_settings("playlist-settings.json")?;
-        let settings = self.settings.as_ref().unwrap();
-        let playlist_name = &settings.playlist_name;
-        let playlist_url = &settings.playlist_url;
-        let cleanup_count = settings.backup_manifest_count.unwrap_or(7);
+        let playlist_name = &self.settings.playlist_name;
+        let playlist_url = &self.settings.playlist_url;
 
         cnd_print_stdout!("Found playlist: \"{}\"", playlist_name);
 
         cnd_print_stdout!("Updating manifest...");
 
-        let new_manifest = match File::create_new("playlist-new.manifest") {
-            Ok(val) => val,
-            Err(e) => {
-                if e.kind() == ErrorKind::AlreadyExists {
-                    warn_print!("playlist-new.manifest already exists. This likely indicates a download in progress failed. This file will be overrwritten.");
-                    OpenOptions::new().read(true).write(true).open("playlist-new.manifest")?
-                } else {
-                    return Err(UpdateError::FileCreationError("playlist-new.manifest".to_owned(), e));
-                }
-            }
-        };
-
-        self.fetch_manifest_url(new_manifest, playlist_name, playlist_url)?;
-
-        let new_songs = Self::fetch_manifest_local(File::open("playlist-new.manifest")?)?;
+        
+        let updated_items_list = self.fetch_manifest_url(playlist_name, playlist_url)?;
         
 
         let removed_songs: Vec<_> = 
-        current_songs.clone().into_iter().filter(|old_song|
+        current_items_list.clone().into_iter().filter(|old_song|
         
-            !new_songs.contains(old_song)
+            !updated_items_list.contains(old_song)
 
         ).collect();
 
-        let added_songs: Vec<_> = new_songs.into_iter().filter(|new_song|
+        let added_songs: Vec<_> = updated_items_list.into_iter().filter(|new_song|
 
-            !current_songs.contains(new_song)
+            !current_items_list.contains(new_song)
         
         ).collect();
 
@@ -132,14 +106,6 @@ impl App {
         }  else {
             cnd_print_stdout!("No items to remove.")
         }
-
-
-
-        let old_playlist_filename = format!("playlist-{}.manifest", time.format("%Y-%m-%dT%H%M%S"));
-        fs::rename("playlist.manifest", old_playlist_filename)?;
-        fs::rename("playlist-new.manifest", "playlist.manifest")?;
-
-        self.cleanup_old_manifests( cleanup_count)?;
 
 
         Ok(())
