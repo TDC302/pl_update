@@ -15,19 +15,6 @@ use clap::Parser;
 
 
 
-
-
-#[macro_export]
-macro_rules! pl_update_ok_exit {
-    () => {
-        println!("\n\n[pl-update] Operation Completed.");
-        std::process::exit(0);
-    };
-}
-
-
-
-
 #[derive(Debug, Clone)]
 struct Song {
     title: String,
