@@ -21,7 +21,9 @@ use super::App;
 use colored::Colorize;
 
 use crate::warn_print;
-use crate::error_print as pl_update_error;
+use crate::error_print;
+use crate::stdout_print;
+use crate::debug_print;
 
 impl App {
     pub(crate) fn pl_push(&mut self, playlist_name: Option<String>, device_id: Option<String>) -> Result<(), PushError> {
@@ -40,38 +42,30 @@ impl App {
         };
 
 
-
-        macro_rules! pl_update_println {
-            ($($x:expr),*) => {
-                if !self.args.quiet {
-                    println!("[pl-update] {}",
-                    format! (
-                            $(
-                                $x,
-                            )*
-                        )
-                    )
-                }
-            };
-        }
-        
-        
-
-        macro_rules! pl_update_vprintln {
-            ($($x:expr),*) => {
+        macro_rules! cnd_print_debug {
+            ($($x:tt)*) => {
                 if self.args.verbose {
-                    println!("{} [pl-update] {}", "DEBUG:".blue(),
-                    format! (
+                    debug_print!(
                         $(
-                            $x,
+                            $x
                         )*
-                    )
-
-                    )
+                    );
                 }
             };
         }
 
+        macro_rules! cnd_print_stdout {
+            ($($x:tt)*) => {
+                if !self.args.quiet {
+                    stdout_print!(
+                    $(
+                        $x
+                    )*
+                );
+                }
+            };
+        }
+       
         let playlist_folder_name: WideUtfString;
 
         if playlist_name.is_some() {
@@ -92,13 +86,13 @@ impl App {
 
         match ret {
             Err(e) => {
-                pl_update_error!("The Windows Media Transfer Protocol provider could not be initialized.");
+                error_print!("The Windows Media Transfer Protocol provider could not be initialized.");
                 return Err(PushError::WindowsError(e));
             },
             Ok(t) => mtp_provider = t,
         }
 
-        pl_update_vprintln!("MTP Initialized.");
+        cnd_print_debug!("MTP Initialized.");
 
 
         let devices = mtp_provider.enumerate_devices().unwrap();
@@ -140,11 +134,11 @@ impl App {
                     return Err(PushError::AmbigousTarget)
                 }
 
-                pl_update_println!("\nMore than one device was detected, please select from the following list:");
-                pl_update_println!("No\t\t\tID\t\t\tName");
+                cnd_print_stdout!("\nMore than one device was detected, please select from the following list:");
+                cnd_print_stdout!("No\t\t\tID\t\t\tName");
                 let mut i: u8 = 1;
                 for device in &devices {
-                    pl_update_println!("{}\t\t\t{}\t\t\t{}", i, device.device_id(), device.friendly_name());
+                    cnd_print_stdout!("{}\t\t\t{}\t\t\t{}", i, device.device_id(), device.friendly_name());
                     i += 1;
                 }
                 
@@ -179,7 +173,7 @@ impl App {
 
         } 
         
-        pl_update_println!("Device \"{}\" selected for use.", target_device.friendly_name());
+        cnd_print_stdout!("Device \"{}\" selected for use.", target_device.friendly_name());
 
 
 
@@ -232,7 +226,7 @@ impl App {
             local_filenames.push(file_name);
         }
 
-        pl_update_vprintln!("Found {} local songs: {:?}", local_filenames.len(), local_filenames);
+        cnd_print_debug!("Found {} local songs: {:?}", local_filenames.len(), local_filenames);
 
         for mut remote_file in remote_playlist_directory.children()?  {
             let file_name = WideUtfStr::from_ucstr(remote_file.name())?.to_owned();
@@ -246,7 +240,7 @@ impl App {
             let mut found = false;
             for i in 0..local_filenames.len(){
                 if *local_filenames.get(i).unwrap() == file_name {
-                    pl_update_vprintln!("Matched local & remote files \"{file_name}\"");
+                    cnd_print_debug!("Matched local & remote files \"{file_name}\"");
                     local_filenames.swap_remove(i);
                     found = true;
                     break;
@@ -254,7 +248,7 @@ impl App {
             }
 
             if !found {
-                pl_update_println!("Deleting removed file \"{file_name}\" from remote.");
+                cnd_print_stdout!("Deleting removed file \"{file_name}\" from remote.");
                 remote_file.delete(true)?;
             }
 
@@ -262,10 +256,10 @@ impl App {
 
 
 
-        pl_update_println!("Pushing {} songs to remote device.", local_filenames.len());
+        cnd_print_stdout!("Pushing {} songs to remote device.", local_filenames.len());
 
         for local_file in local_filenames {
-            pl_update_println!("Pushing file \"{local_file}\" to remote.");
+            cnd_print_stdout!("Pushing file \"{local_file}\" to remote.");
             if let Err(e) = remote_playlist_directory.push_file(Path::new(&local_file.as_ustr().to_os_string()), false) {
                 return Err(PushError::FileCreationError(local_file.to_string(), e));
             }

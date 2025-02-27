@@ -3,7 +3,7 @@ use std::{io::{BufRead, BufReader, Error, ErrorKind}, process::{ChildStderr, Chi
 
 use colored::Colorize;
 
-use crate::{error_print, warn_print};
+use crate::{debug_print, error_print, stdout_print, warn_print};
 
 use super::App;
 
@@ -114,12 +114,10 @@ impl App {
         self.find_ffmpeg()?;
     
        
-
-
         let mut max_threads = self.args.threads;
         
         if !self.args.quiet && max_threads > 1 {
-            println!("Threads available: {}, Using: {}", std::thread::available_parallelism()?.get() , max_threads);
+            stdout_print!("Threads available: {}, Using: {}", std::thread::available_parallelism()?.get() , max_threads);
         }
 
         let mut output_args = vec!["--extract-audio".to_owned(),
@@ -188,7 +186,7 @@ impl App {
 
     
         if self.args.verbose {
-            println!("{} [pl-update] Parsed {} URL vecs for threads {:?}", "DEBUG:".blue(), split_url_vecs.len(), split_url_vecs);
+            debug_print!("Parsed {} URL vecs for threads {:?}", split_url_vecs.len(), split_url_vecs);
         }
         
 
@@ -210,7 +208,7 @@ impl App {
 
 
             if !self.args.quiet {
-                println!("[pl-update] Started download thread with id: {}", ytdl_thread.id());
+                stdout_print!("Started download thread with id: {}", ytdl_thread.id());
             }
 
             let threadid = ytdl_thread.id();
@@ -265,14 +263,14 @@ impl App {
 
         for mut child in ytdl_threads {
             if !self.args.quiet {
-            println!("[pl-update] Closed download thread with id: {}", child.id());
+            stdout_print!("Closed download thread with id: {}", child.id());
             }
             child.kill()?;
         }
 
 
         if !self.args.quiet {
-            println!("[pl-update] Downloaded {} songs. {} songs were unavailable for download.", downloaded_songs, unavailable_songs);
+            stdout_print!("Downloaded {} songs. {} songs were unavailable for download.", downloaded_songs, unavailable_songs);
         }
 
         Ok(())

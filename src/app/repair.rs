@@ -22,24 +22,21 @@ use std::io::Write;
 use std::time::SystemTime;
 
 use super::App;
-
+use crate::debug_print;
 
 impl App {
 
 
     pub(super) fn pl_repair(&mut self, playlist_name: Option<String>) -> Result<(), RepairError> {
 
-        macro_rules! pl_update_vprintln {
-            ($($x:expr),*) => {
+        macro_rules! cnd_print_debug {
+            ($($x:tt)*) => {
                 if self.args.verbose {
-                    println!("{} [pl-update] {}", "DEBUG:".blue(),
-                    format! (
+                    debug_print!(
                         $(
-                            $x,
+                            $x
                         )*
-                    )
-
-                    )
+                    );
                 }
             };
         }
@@ -116,8 +113,8 @@ impl App {
         }
 
         
-        pl_update_vprintln!("Song names: {:?}", song_names);
-        pl_update_vprintln!("Song Ids: {:?}", song_ids);
+        cnd_print_debug!("Song names: {:?}", song_names);
+        cnd_print_debug!("Song Ids: {:?}", song_ids);
 
 
         let time: chrono::DateTime<Local> =  SystemTime::now().into();

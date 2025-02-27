@@ -16,6 +16,20 @@ mod init;
 mod manifest;
 mod download;
 
+#[macro_export]
+macro_rules! stdout_print {
+    ($($x:expr),*) => {
+        println!("[pl-update] {}",
+        format! (
+                $(
+                    $x,
+                )*
+            )
+        )
+    };
+}
+
+#[macro_export]
 macro_rules! debug_print {
     ($($x:expr),*) => {
         println!("{} [pl-update] {}", "DEBUG:".blue(),
@@ -157,7 +171,7 @@ impl App {
         match ret {
             Ok(_) => {
     
-                println!("[pl-update] Operation completed in {}m {}s", delta.num_minutes(), delta.num_seconds());
+                stdout_print!("Operation completed in {}m {}s", delta.num_minutes(), delta.num_seconds());
                 Ok(())
             },
             Err(e) => {
@@ -179,7 +193,7 @@ impl App {
             let out = &ytdl_check.unwrap().stdout;
             let ver = std::str::from_utf8(out).unwrap().trim();
             if self.args.verbose {
-                println!("{} [pl-update] Found {} version {}", "DEBUG:".blue(), ytdl_command, ver);
+                debug_print!("Found {} version {}", ytdl_command, ver);
             }
             return Ok(());
             
@@ -202,7 +216,7 @@ fn find_ffmpeg(&self) -> Result<(), io::Error> {
             let out_data = str::from_utf8(out).unwrap().split(" ").collect::<Vec<_>>();
             let ver = out_data.get(2).unwrap();
             if self.args.verbose {
-                println!("{} [pl-update] Found {} version {}", "DEBUG:".blue(), ffmpeg_command, ver);
+                debug_print!("Found {} version {}", ffmpeg_command, ver);
             }
             return Ok(());
             

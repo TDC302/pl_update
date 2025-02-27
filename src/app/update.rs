@@ -2,7 +2,7 @@ use chrono::Local;
 use colored::Colorize;
 use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::ErrorKind, time::SystemTime};
 
-use crate::{error::UpdateError, error_print as pl_update_error, warn_print};
+use crate::{error::UpdateError, error_print, warn_print, debug_print, stdout_print};
 
 use super::App;
 
@@ -13,34 +13,31 @@ impl App {
 
     pub(super) fn update(&mut self, playlist_name: Option<String>) -> Result<(), UpdateError>{
 
-        macro_rules! pl_update_vprintln {
-            ($($x:expr),*) => {
+        macro_rules! cnd_print_debug {
+            ($($x:tt)*) => {
                 if self.args.verbose {
-                    println!("{} [pl-update] {}", "DEBUG:".blue(),
-                    format! (
+                    debug_print!(
                         $(
-                            $x,
+                            $x
                         )*
-                    )
-
-                    )
+                    );
                 }
             };
         }
 
-        macro_rules! pl_update_println {
-            ($($x:expr),*) => {
-                if !&self.args.quiet {
-                    println!("[pl-update] {}",
-                    format! (
-                            $(
-                                $x,
-                            )*
-                        )
-                    )
+        macro_rules! cnd_print_stdout {
+            ($($x:tt)*) => {
+                if !self.args.quiet {
+                    stdout_print!(
+                    $(
+                        $x
+                    )*
+                );
                 }
             };
         }
+
+
         self.find_ffmpeg()?;
         self.find_yt_dl()?;
     
@@ -64,16 +61,16 @@ impl App {
             }
         }; 
         
-        let current_songs = Self::parse_manifest(current_manifest)?;
+        let current_songs = Self::fetch_manifest_local(current_manifest)?;
         self.fetch_settings("playlist-settings.json")?;
         let settings = self.settings.as_ref().unwrap();
         let playlist_name = &settings.playlist_name;
         let playlist_url = &settings.playlist_url;
         let cleanup_count = settings.backup_manifest_count.unwrap_or(7);
 
-        pl_update_println!("Found playlist: \"{}\"", playlist_name);
+        cnd_print_stdout!("Found playlist: \"{}\"", playlist_name);
 
-        pl_update_println!("Updating manifest...");
+        cnd_print_stdout!("Updating manifest...");
 
         let new_manifest = match File::create_new("playlist-new.manifest") {
             Ok(val) => val,
@@ -87,9 +84,9 @@ impl App {
             }
         };
 
-        self.update_manifest(new_manifest, playlist_name, playlist_url)?;
+        self.fetch_manifest_url(new_manifest, playlist_name, playlist_url)?;
 
-        let new_songs = Self::parse_manifest(File::open("playlist-new.manifest")?)?;
+        let new_songs = Self::fetch_manifest_local(File::open("playlist-new.manifest")?)?;
         
 
         let removed_songs: Vec<_> = 
@@ -105,35 +102,35 @@ impl App {
         
         ).collect();
 
-        pl_update_vprintln!("Detected {} items to download: {:?}", added_songs.len(), added_songs);
+        cnd_print_debug!("Detected {} items to download: {:?}", added_songs.len(), added_songs);
 
         let removed_filenames: Vec<_> = removed_songs.into_iter().map(|f| f.into_filename("mp3".to_owned())).collect();
         let added_urls: Vec<_> = added_songs.into_iter().map(|u| u.url().unwrap()).collect();
 
-        pl_update_vprintln!("Detected {} items to remove: {:?}", removed_filenames.len(), removed_filenames);
+        cnd_print_debug!("Detected {} items to remove: {:?}", removed_filenames.len(), removed_filenames);
 
 
         
         if added_urls.len() > 0 {
-            pl_update_println!("Downloading {} new items...", added_urls.len());
+            cnd_print_stdout!("Downloading {} new items...", added_urls.len());
             self.download(added_urls)?;
         } else {
-            pl_update_println!("No items to download.");
+            cnd_print_stdout!("No items to download.");
         }
         
 
         if removed_filenames.len() > 0 {
-            pl_update_println!("Deleting {} removed items...", removed_filenames.len()); 
+            cnd_print_stdout!("Deleting {} removed items...", removed_filenames.len()); 
 
             for filename in removed_filenames {
-                pl_update_println!("Deleting file {}.", &filename);
+                cnd_print_stdout!("Deleting file {}.", &filename);
 
                 if let Err(e) = remove_file(&filename) {
-                    pl_update_error!("Error while deleting file \"{}\"\t {}", &filename, e);
+                    error_print!("Error while deleting file \"{}\"\t {}", &filename, e);
                 }
             }
         }  else {
-            pl_update_println!("No items to remove.")
+            cnd_print_stdout!("No items to remove.")
         }
 
 

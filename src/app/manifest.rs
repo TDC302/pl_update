@@ -2,7 +2,7 @@ use std::{env::current_dir, fs::File, io::{self, BufRead, BufReader, Error, Erro
 use colored::Colorize;
 use widestring::Utf16String;
 
-use crate::{string_parsing::StringExts, warn_print as pl_update_warn, SEP_CHAR};
+use crate::{string_parsing::StringExts, warn_print, SEP_CHAR, stdout_print, debug_print};
 use crate::fatal_error;
 
 use super::App;
@@ -10,21 +10,15 @@ use super::App;
 use crate::Song;
 
 
-
-
-
-
 impl App {
 
-    pub(super) fn parse_manifest(manifest: File) -> Result<Vec<Song>, Error> {
+    pub(super) fn fetch_manifest_local(manifest: File) -> Result<Vec<Song>, Error> {
 
         let file_reader = BufReader::new(manifest);
     
         let entries = file_reader.lines();
     
         let mut songs = Vec::new();
-    
-    
     
         let mut line_num = 0;
         for entry in entries {
@@ -35,7 +29,7 @@ impl App {
     
             if let Err(e) = entry {
                 if e.kind() == ErrorKind::InvalidData {
-                    pl_update_warn!("Invalid data while parsing manifest line {line_num}!");
+                    warn_print!("Invalid data while parsing manifest line {line_num}!");
                     continue;
                 } else {
                     return Err(e);
@@ -78,7 +72,7 @@ impl App {
     }
 
     
-    pub(super) fn update_manifest(&self, mut manifest: File, playlist_title: &String, playlist_url: &String) -> Result<(), Error> {
+    pub(super) fn fetch_manifest_url(&self, mut manifest: File, playlist_title: &String, playlist_url: &String) -> Result<(), Error> {
     
         let mut output_args = Vec::new();
         let command_name = &self.args.yt_dl_location;
@@ -102,12 +96,12 @@ impl App {
     
     
         if !self.args.quiet {
-            println!("Fetching contents of playlist \"{playlist_title}\"");
+            stdout_print!("Fetching contents of playlist \"{playlist_title}\"");
         } 
     
     
         if self.args.verbose {
-            println!("Running {} with arguments {:?}", command_name, output_args);
+            debug_print!("Running {} with arguments {:?}", command_name, output_args);
         }
       
     
@@ -164,7 +158,7 @@ impl App {
         }
 
         if !self.args.quiet {
-            println!("[pl-update] Cleaning up...");
+            stdout_print!("Cleaning up...");
         }
 
         manifests.sort_by(|a, b | b.file_name().partial_cmp(&a.file_name()).unwrap());
@@ -172,7 +166,7 @@ impl App {
         while manifests.len() >= 7 {
             let old_manifest = manifests.pop().expect("list should be at least 7 long");
             if self.args.verbose {
-                println!("{} [pl-update] Deleted old manifest {}", "DEBUG:".blue(), old_manifest.file_name().to_str().unwrap());
+                debug_print!("Deleted old manifest {}", old_manifest.file_name().to_str().unwrap());
             }
             std::fs::remove_file(old_manifest.path())?;
         }

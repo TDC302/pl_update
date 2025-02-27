@@ -15,35 +15,33 @@ use std::process::Command;
 
 use colored::Colorize;
 
+use crate::{debug_print, stdout_print};
+
 use super::App;
 
 impl App {
     pub(crate) fn pl_init(&mut self, playlist_url: String) -> Result<(), InitError> {
-        macro_rules! pl_update_vprintln {
-            ($($x:expr),*) => {
+        
+        macro_rules! cnd_print_debug {
+            ($($x:tt)*) => {
                 if self.args.verbose {
-                    println!("{} [pl-update] {}", "DEBUG:".blue(),
-                    format! (
+                    debug_print!(
                         $(
-                            $x,
+                            $x
                         )*
-                    )
-
-                    )
+                    );
                 }
             };
         }
 
-        macro_rules! pl_update_println {
-            ($($x:expr),*) => {
+        macro_rules! cnd_print_stdout {
+            ($($x:tt)*) => {
                 if !self.args.quiet {
-                    println!("[pl-update] {}",
-                    format! (
-                            $(
-                                $x,
-                            )*
-                        )
-                    )
+                    stdout_print!(
+                    $(
+                        $x
+                    )*
+                );
                 }
             };
         }
@@ -75,7 +73,7 @@ impl App {
 
         let command_name = self.args.yt_dl_location.clone();
 
-        pl_update_vprintln!("Running {} with arguments {:?}", command_name, output_args);
+        cnd_print_debug!("Running {} with arguments {:?}", command_name, output_args);
 
         let ytdl_output = Command::new(&command_name)
                 .args(output_args.clone())
@@ -101,13 +99,13 @@ impl App {
                 if directory.count() > 0 {
                     return Err(InitError::AlreadyExists(playlist_name.to_owned()));
                 } else {
-                    pl_update_vprintln!("Using existing directory \"{}\"", playlist_name);
+                    cnd_print_debug!("Using existing directory \"{}\"", playlist_name);
                 }
             },
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
                     create_dir(playlist_name)?;
-                    pl_update_vprintln!("Created directory \"{}\"", playlist_name);
+                    cnd_print_debug!("Created directory \"{}\"", playlist_name);
                 } else {
                     return Err(e.into());
                 }
@@ -126,20 +124,20 @@ impl App {
 
         let manifest = OpenOptions::new().read(true).write(true).create(true).open("playlist.manifest")?;
 
-        pl_update_println!("Fetching contents of playlist \"{playlist_name}\"");
+        cnd_print_stdout!("Fetching contents of playlist \"{playlist_name}\"");
 
-        self.update_manifest(manifest, &playlist_name.to_string(), &playlist_url)?;
-        pl_update_println!("Manifest created.");
+        self.fetch_manifest_url(manifest, &playlist_name.to_string(), &playlist_url)?;
+        cnd_print_stdout!("Manifest created.");
         
         
-        pl_update_println!("Parsing urls from manifest...");
-        let songs = Self::parse_manifest(File::open("playlist.manifest")?).unwrap();
+        stdout_print!("Parsing urls from manifest...");
+        let songs = Self::fetch_manifest_local(File::open("playlist.manifest")?).unwrap();
         let song_urls: Vec<String> = songs.iter().map(|f| f.url.clone().expect("song should have url")).collect();
 
-        pl_update_println!("Successfully parsed {} urls from manifest.", song_urls.len());
-        pl_update_vprintln!("Urls: {:?}", song_urls);
+        cnd_print_stdout!("Successfully parsed {} urls from manifest.", song_urls.len());
+        cnd_print_debug!("Urls: {:?}", song_urls);
 
-        pl_update_println!("Downloading...");
+        cnd_print_stdout!("Downloading...");
         self.download(song_urls)?;
 
 
