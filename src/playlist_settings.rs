@@ -2,7 +2,7 @@ use std::{fs::{File, OpenOptions}, io::{BufReader, BufWriter}, path::Path};
 
 
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct PlaylistSettings {
     pub playlist_url: String,
     pub playlist_name: String,

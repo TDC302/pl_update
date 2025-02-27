@@ -2,7 +2,7 @@ use chrono::Local;
 use colored::Colorize;
 use std::{env::set_current_dir, fs::{self, remove_file, File, OpenOptions}, io::ErrorKind, time::SystemTime};
 
-use crate::{cleanup_old_manifests, download, error::UpdateError, fetch_settings, parse_manifest, error_print as pl_update_error, warn_print, update_manifest};
+use crate::{error::UpdateError, error_print as pl_update_error, warn_print};
 
 use super::App;
 
@@ -41,7 +41,8 @@ impl App {
                 }
             };
         }
-        
+        self.find_ffmpeg()?;
+        self.find_yt_dl()?;
     
         if playlist_name.is_some() {
             match set_current_dir(playlist_name.clone().unwrap()) {
@@ -63,9 +64,12 @@ impl App {
             }
         }; 
         
-        let current_songs = parse_manifest(current_manifest)?;
-        let (playlist_name, playlist_url, cleanup_count) = fetch_settings("playlist-settings.json", &mut self.args)?;
-
+        let current_songs = Self::parse_manifest(current_manifest)?;
+        self.fetch_settings("playlist-settings.json")?;
+        let settings = self.settings.as_ref().unwrap();
+        let playlist_name = &settings.playlist_name;
+        let playlist_url = &settings.playlist_url;
+        let cleanup_count = settings.backup_manifest_count.unwrap_or(7);
 
         pl_update_println!("Found playlist: \"{}\"", playlist_name);
 
@@ -83,9 +87,9 @@ impl App {
             }
         };
 
-        update_manifest(new_manifest, playlist_name, &playlist_url, &self.args)?;
+        self.update_manifest(new_manifest, playlist_name, playlist_url)?;
 
-        let new_songs = parse_manifest(File::open("playlist-new.manifest")?)?;
+        let new_songs = Self::parse_manifest(File::open("playlist-new.manifest")?)?;
         
 
         let removed_songs: Vec<_> = 
@@ -112,7 +116,7 @@ impl App {
         
         if added_urls.len() > 0 {
             pl_update_println!("Downloading {} new items...", added_urls.len());
-            download(added_urls, &self.args)?;
+            self.download(added_urls)?;
         } else {
             pl_update_println!("No items to download.");
         }
@@ -138,7 +142,7 @@ impl App {
         fs::rename("playlist.manifest", old_playlist_filename)?;
         fs::rename("playlist-new.manifest", "playlist.manifest")?;
 
-        cleanup_old_manifests(&self.args, cleanup_count)?;
+        self.cleanup_old_manifests( cleanup_count)?;
 
 
         Ok(())

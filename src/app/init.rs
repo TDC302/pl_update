@@ -1,7 +1,6 @@
 
 use crate::error::InitError;
 use crate::playlist_settings::PlaylistSettings;
-use crate::update_manifest;
 
 use core::str;
 use std::env::set_current_dir;
@@ -15,11 +14,6 @@ use std::io::Write;
 use std::process::Command;
 
 use colored::Colorize;
-
-use crate::download;
-use crate::find_yt_dl;
-
-use crate::parse_manifest;
 
 use super::App;
 
@@ -62,11 +56,10 @@ impl App {
             output_args.push("--quiet".to_owned());
         }
 
-        if self.args.ffmpeg_location.is_some() {
-            output_args.push("--ffmpeg-location".to_owned());
-            output_args.push(self.args.ffmpeg_location.to_owned().unwrap());
-        
-        }
+        self.find_ffmpeg()?;
+
+        output_args.push("--ffmpeg-location".to_owned());
+        output_args.push(self.args.ffmpeg_location.to_owned());  
 
         output_args.push("--simulate".to_owned());
         output_args.push("--flat-playlist".to_owned());
@@ -78,8 +71,9 @@ impl App {
         output_args.push("--playlist-items=1".to_owned());
         
         
+        self.find_yt_dl()?;
+
         let command_name = self.args.yt_dl_location.clone();
-        find_yt_dl(self.args.verbose, &command_name)?;
 
         pl_update_vprintln!("Running {} with arguments {:?}", command_name, output_args);
 
@@ -134,19 +128,19 @@ impl App {
 
         pl_update_println!("Fetching contents of playlist \"{playlist_name}\"");
 
-        update_manifest(manifest, playlist_name.to_string(), &playlist_url, &self.args)?;
+        self.update_manifest(manifest, &playlist_name.to_string(), &playlist_url)?;
         pl_update_println!("Manifest created.");
         
         
         pl_update_println!("Parsing urls from manifest...");
-        let songs = parse_manifest(File::open("playlist.manifest")?).unwrap();
+        let songs = Self::parse_manifest(File::open("playlist.manifest")?).unwrap();
         let song_urls: Vec<String> = songs.iter().map(|f| f.url.clone().expect("song should have url")).collect();
 
         pl_update_println!("Successfully parsed {} urls from manifest.", song_urls.len());
         pl_update_vprintln!("Urls: {:?}", song_urls);
 
         pl_update_println!("Downloading...");
-        download(song_urls, &self.args)?;
+        self.download(song_urls)?;
 
 
         Ok(())

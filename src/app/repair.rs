@@ -1,7 +1,5 @@
 
-use crate::cleanup_old_manifests;
 use crate::error::RepairError;
-use crate::file_is_manifest;
 
 use crate::playlist_settings::PlaylistSettings;
 use crate::string_parsing::StringExts;
@@ -87,7 +85,7 @@ impl App {
 
             
 
-            if file_is_manifest(&file_name) { // skip manifests without warning
+            if Self::file_is_manifest(&file_name) { // skip manifests without warning
                 continue;
             }
 
@@ -147,7 +145,7 @@ impl App {
         }
 
 
-        cleanup_old_manifests(&self.args, 7)?;
+        self.cleanup_old_manifests(7)?;
 
 
         Ok(())

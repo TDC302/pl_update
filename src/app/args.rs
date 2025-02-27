@@ -39,9 +39,9 @@ pub(crate) struct Args {
 
 
 
-    /// The location of yt-dlp
-    #[arg(long)] 
-    pub(crate) ffmpeg_location: Option<String>,
+    /// The location of ffmpeg
+    #[arg(long, default_value_t = {"ffmpeg".to_string()})] 
+    pub(crate) ffmpeg_location: String,
 
 
     /// The number of threads to use

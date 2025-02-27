@@ -8,7 +8,6 @@ use std::path::Path;
 
 
 use crate::error::PushError;
-use crate::file_is_manifest;
 use crate::FILE_EXT;
 use crate::string_parsing::StringExts;
 
@@ -222,7 +221,7 @@ impl App {
         for local_file in local_playlist_directory  {
             let file_name = WideUtfString::from_os_string(local_file.file_name())?;
 
-            if file_is_manifest(&file_name) { // skip manifests without warning
+            if Self::file_is_manifest(&file_name) { // skip manifests without warning
                 continue;
             }
 
