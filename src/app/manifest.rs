@@ -71,7 +71,7 @@ impl App {
                     continue;
                 }
 
-                let song = Song::new(remainder[1..remainder.len() - FILE_EXT.len() - 1].to_owned(), song_name[0..song_name.len()-1].to_owned(), None);
+                let song = Song::new(song_name[0..song_name.len()-1].to_owned(),remainder[1..remainder.len() - FILE_EXT.len() - 1].to_owned(), None);
                 cnd_print_debug!("Found {:?}", song);
                 songs.push(song);
 
