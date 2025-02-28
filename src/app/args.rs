@@ -53,9 +53,9 @@ pub(crate) struct Args {
             panic!("System has no cpu cores.");
         }
 
-        if cpu_core_count >= 24 {
+        if cpu_core_count >= 16 {
             cpu_core_count / 4
-        } else if cpu_core_count >= 12 {
+        } else if cpu_core_count >= 8 {
             cpu_core_count / 3
         } else if cpu_core_count >= 4 {
             cpu_core_count / 2
