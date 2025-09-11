@@ -13,7 +13,7 @@ license = "MIT"
 blocking = "1.4.0"
 chrono = "0.4.38"
 clap = { version = "4.5.18", features = ["derive"] }
-colored = "2.1.0"
+colored = "3.0.0"
 os_info = "3.8.2"
 regex = "1.10.5"
 serde = "1.0.217"
