@@ -1,3 +1,5 @@
-/.vscode
+# Ironically, git seems to be ignoring my gitignore. If you see this, this is a cry for help.
+/.*
+/Cargo.lock
 /target
 /test
