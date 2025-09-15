@@ -37,11 +37,9 @@ pub enum Error {
     #[error("The playlist settings could not be parsed. Reason: {0}")]
     SettingsParseError(#[from] serde_json::Error),
 
-    #[error("The directory does not have a settings file, either run pl-update with the INIT command, or create a \"playlist-settings.json\" file containing at least your playlist's URL and title")]
+    #[error("The directory does not have a settings file, either run pl-update with the INIT command, or create a \".playlist/settings.json\" file containing at least your playlist's URL and title")]
     PlaylistUninitialized,
 
-    #[error("The {0} file could not be opened. Reason: {1}")]
-    FileOpenError(String, std::io::Error)
 
 
 }

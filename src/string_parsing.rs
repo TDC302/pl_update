@@ -9,6 +9,7 @@ pub trait StringExts<T, Slice: ?Sized> {
     fn contains(&self, pat: T) -> bool;
     fn eq_ignore_case(&self, pat: T) -> bool;
     fn ends_with(&self, pat: T) -> bool;
+    fn starts_with(&self, pat: T) -> bool;
     fn rsplit_once(&self, pat: T) -> Option<(&Slice, &Slice)>;
     fn from_os_string(data: OsString) -> Result<T, Self::EncodingError>;
 
@@ -63,6 +64,10 @@ impl StringExts<Utf16String, Utf16Str> for Utf16String {
     
     fn ends_with(&self, pat: Utf16String) -> bool {
         self.as_slice().ends_with(pat.as_slice())
+    }
+
+    fn starts_with(&self, pat: Utf16String) -> bool {
+        self.as_slice().starts_with(pat.as_slice())
     }
     
     fn from_os_string(data: OsString) -> Result<Utf16String, Utf16Error> {

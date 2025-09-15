@@ -1,15 +1,16 @@
 
 use crate::error::Error;
 
+use crate::playlist_settings;
 use crate::playlist_settings::PlaylistSettings;
 use colored::Colorize;
 
 use crate::warn_print;
 
-use std::fs;
+use std::fs::create_dir;
+use std::fs::remove_file;
 use std::io;
 use std::io::stdout;
-use std::io::ErrorKind;
 use std::io::Write;
 
 use super::App;
@@ -19,30 +20,38 @@ impl App {
 
     pub(super) fn repair(&mut self, playlist_name: Option<String>) -> Result<(), Error> {
 
-
-        match fs::OpenOptions::new().read(true).open("playlist-settings.json") {
-            Ok(f) => {
-                if let Err(_) = PlaylistSettings::from_file(f) {
-                    Self::manual_settings(&playlist_name)?;
+        match PlaylistSettings::try_open() {
+            Ok(s) => {
+                if s.format_is_depreciated() {
+                    Self::update_settings_format(&s)?;
+                } else {
+                    println!("No issues found.");
                 }
-            },
-            Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
-                    if self.args.suppress_interactive {
+            }
+            Err(Error::PlaylistUninitialized) => {
+                if self.args.suppress_interactive {
                         return Err(Error::PlaylistUninitialized);
                     } else {
                         Self::manual_settings(&playlist_name)?;
                     }
-                } else {
-                    return Err(e.into());
-                }
             }
-        }
+            Err(e) => return Err(e)
+        } 
 
 
         Ok(())
     }
 
+
+    pub(super) fn update_settings_format(playlist_settings: &PlaylistSettings) -> Result<(), std::io::Error> {
+        println!("Updating playlist format...");
+                
+        create_dir(".playlist")?;
+        playlist_settings.write_to_disk()?;
+        remove_file(playlist_settings::PLAYLIST_SETTINGS_NAME_COMPAT)?;
+
+        Ok(())
+    }   
 
     /// Interactively prompt the user to create a new playlist settings file
     pub(super) fn manual_settings(playlist_name: &Option<String>) -> Result<(), std::io::Error> {
@@ -73,7 +82,8 @@ impl App {
                     buffer.trim().to_string()
                 };
 
-                PlaylistSettings::new(url, name).write_to_disk("playlist-settings.json")?;
+                create_dir(".playlist")?;
+                PlaylistSettings::new(url, name).write_to_disk()?;
 
                 println!("\nSuccessfully created new playlist settings.");
                 break;

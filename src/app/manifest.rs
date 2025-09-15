@@ -2,9 +2,9 @@ use std::{fs::read_dir, io::{self, BufReader, Error, ErrorKind}, process::{Comma
 use colored::Colorize;
 use widestring::{Utf16String, WideUtfString};
 
-use crate::{app::YOUTUBE_ID_LEN, debug_print, fatal_error, stdout_print, string_parsing::{ReadtoUtf16String, StringExts}, warn_print, FILE_EXT, SEP_CHAR};
+use crate::{app::YOUTUBE_ID_LEN, debug_print, fatal_error, playlist_settings::PLAYLIST_SETTINGS_NAME_COMPAT, stdout_print, string_parsing::{ReadtoUtf16String, StringExts}, warn_print, FILE_EXT, SEP_CHAR};
 
-use super::{App, PLAYLIST_SETTINGS_NAME};
+use super::App;
 
 use crate::Song;
 
@@ -202,7 +202,7 @@ impl App {
     
    
     pub(super) fn file_is_manifest(filename: &Utf16String) -> bool {
-        if filename == &Utf16String::from_str(PLAYLIST_SETTINGS_NAME) {
+        if filename == &Utf16String::from_str(PLAYLIST_SETTINGS_NAME_COMPAT) || filename.starts_with(".".into()){
             true
         } else {
             false

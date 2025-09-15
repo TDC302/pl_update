@@ -11,6 +11,7 @@ use std::io::ErrorKind;
 use std::io::Write;
 use std::process::Command;
 
+
 use colored::Colorize;
 
 use crate::{debug_print, stdout_print};
@@ -49,6 +50,7 @@ impl App {
 
         if self.args.verbose {
             output_args.push("--verbose".to_owned());
+        } else if self.args.quiet {
             output_args.push("--quiet".to_owned());
         }
 
@@ -108,13 +110,14 @@ impl App {
 
         
         set_current_dir(playlist_name)?;
+        create_dir(".playlist")?;
 
         let mut settings = PlaylistSettings::new(playlist_url.clone(), playlist_name.to_string());
 
         settings.yt_dl_args = self.args.yt_dl_args.clone();
         settings.postprocessor_args = self.args.postproccessor_args.clone();
 
-        settings.write_to_disk("playlist-settings.json")?;
+        settings.write_to_disk()?;
 
         let songs = self.fetch_manifest_url(&playlist_name.to_string(), &playlist_url)?;
         

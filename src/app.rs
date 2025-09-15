@@ -1,5 +1,4 @@
-use std::io::ErrorKind;
-use std::{env::set_current_dir, fs::OpenOptions, str};
+use std::env::set_current_dir;
 use clap::Parser;
 use colored::Colorize;
 use commands::Commands;
@@ -108,10 +107,6 @@ macro_rules! fatal_error {
 /// The length of a youtube ID.
 const YOUTUBE_ID_LEN: usize = 11;
 
-/// The filename to use for playlist settings files.
-const PLAYLIST_SETTINGS_NAME: &str = "playlist-settings.json";
-
-
 pub struct App {
     args: Args,
     settings: PlaylistSettings
@@ -152,19 +147,10 @@ impl App {
             if playlist_name_.is_some() {
                 set_current_dir(playlist_name_.unwrap())?;
             }
-
-            let file = match OpenOptions::new().read(true).open(PLAYLIST_SETTINGS_NAME) {
-                Ok(val) => val,
-                Err( e) =>  {
-                    if e.kind() == ErrorKind::NotFound {
-                        return Err(Error::PlaylistUninitialized);
-                    } else {
-                        return Err(Error::FileOpenError(PLAYLIST_SETTINGS_NAME.to_string(), e))
-                    }
-                }
-            };
-
-            settings =  PlaylistSettings::from_file(file)?;
+            settings =  PlaylistSettings::try_open()?;
+            if settings.format_is_depreciated() {
+                warn_print!("Playlist settings uses old format, consider running 'pl-update repair'");
+            }
         }
 
         let mut app = Self {args, settings};
