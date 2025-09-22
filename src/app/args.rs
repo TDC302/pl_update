@@ -23,6 +23,8 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) suppress_interactive: bool,
 
+    #[arg(short, long, default_value_t = true)]
+    pub(crate) progress: bool,
 
     /// Args to pass to yt-dlp
     #[arg(long)]

@@ -1,6 +1,8 @@
 use widestring::error::Utf16Error;
 use winmtp::{error::{AddFileError, CreateFolderError, MtpError}, WindowsError};
 
+use crate::downloader;
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("The Media Transfer Protocol encountered an error: {0}")]
@@ -31,8 +33,7 @@ pub enum Error {
    
     #[error("Directory \"{0}\" already exists, and is not empty.")]
     AlreadyExists(String),
-    #[error("URL provided was not a playlist, or playlist name was NA (playlist name cannot be NA)")]
-    InvalidInput,
+
 
     #[error("The playlist settings could not be parsed. Reason: {0}")]
     SettingsParseError(#[from] serde_json::Error),
@@ -40,7 +41,8 @@ pub enum Error {
     #[error("The directory does not have a settings file, either run pl-update with the INIT command, or create a \".playlist/settings.json\" file containing at least your playlist's URL and title")]
     PlaylistUninitialized,
 
-
+    #[error("Downloader Error: {0}")]
+    DownloaderError(#[from] downloader::error::Error)
 
 }
 

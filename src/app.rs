@@ -3,6 +3,7 @@ use clap::Parser;
 use colored::Colorize;
 use commands::Commands;
 pub(crate) use args::Args;
+use crate::downloader::Downloader;
 use crate::error::Error;
 
 use crate::playlist_settings::PlaylistSettings;
@@ -15,7 +16,6 @@ mod repair;
 mod push;
 mod init;
 mod manifest;
-mod download;
 
 #[macro_export]
 macro_rules! stdout_print {
@@ -105,11 +105,12 @@ macro_rules! fatal_error {
 }
 
 /// The length of a youtube ID.
-const YOUTUBE_ID_LEN: usize = 11;
+pub(crate) const YOUTUBE_ID_LEN: usize = 11;
 
 pub struct App {
     args: Args,
-    settings: PlaylistSettings
+    settings: PlaylistSettings,
+    downloader: Downloader
     
 }
 
@@ -144,16 +145,25 @@ impl App {
                 unreachable!();
             }
             
-            if playlist_name_.is_some() {
-                set_current_dir(playlist_name_.unwrap())?;
+            
+            if let Some(mut dir) = playlist_name_ {
+                // there is some weird issue with clap where it doesn't properly parse paths that end with slash
+                if dir.ends_with('\\') { dir.truncate(dir.len()-1); }
+
+                set_current_dir(dir)?; // there should be a better error message here.
             }
             settings =  PlaylistSettings::try_open()?;
             if settings.format_is_depreciated() {
                 warn_print!("Playlist settings uses old format, consider running 'pl-update repair'");
             }
         }
+        let downloader = Downloader::new(args.yt_dl_location.clone(), args.yt_dl_args.clone())?;
 
-        let mut app = Self {args, settings};
+        if args.verbose {
+            debug_print!("Found {} version {}", args.yt_dl_location, downloader.version())
+        }
+
+        let mut app = Self {args, settings, downloader};
 
         match command {
             Commands::Init { playlist_url } => app.init(playlist_url).map_err(|e| e.into()),
@@ -164,29 +174,6 @@ impl App {
     
       
     }
-
-
-    fn find_yt_dl(&self) -> Result<(), std::io::Error> {
-
-        let ytdl_command = self.args.yt_dl_location.clone();
-        let ytdl_check: Result<std::process::Output, std::io::Error> = std::process::Command::new(&ytdl_command).arg("--version").output();
-        
-        if ytdl_check.is_ok() {
-            let out = &ytdl_check.unwrap().stdout;
-            let ver = std::str::from_utf8(out).unwrap().trim();
-            if self.args.verbose {
-                debug_print!("Found {} version {}", ytdl_command, ver);
-            }
-            return Ok(());
-            
-        } else {
-            let e = ytdl_check.unwrap_err();
-            fatal_error!(e.kind(), "YT-DL could not be launched. Check that it is in the system path or current directory and is accessible. \nReason: {}", e);
-        
-        }
-    }
-
-
 
 
 }

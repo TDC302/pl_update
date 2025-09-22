@@ -2,14 +2,10 @@
 use crate::error::Error;
 use crate::playlist_settings::PlaylistSettings;
 
-use core::str;
 use std::env::set_current_dir;
 use std::fs::create_dir;
 use std::fs::read_dir;
-use std::io::stdout;
 use std::io::ErrorKind;
-use std::io::Write;
-use std::process::Command;
 
 
 use colored::Colorize;
@@ -45,62 +41,20 @@ impl App {
             };
         }
 
-
-        let mut output_args = Vec::new();
-
-        if self.args.verbose {
-            output_args.push("--verbose".to_owned());
-        } else if self.args.quiet {
-            output_args.push("--quiet".to_owned());
-        }
+        let playlist_name = self.downloader.fetch_playlist_name(&playlist_url, self.args.verbose)?;
 
 
-        output_args.push("--simulate".to_owned());
-        output_args.push("--flat-playlist".to_owned());
-        output_args.push("--lazy-playlist".to_owned());
-        output_args.push(playlist_url.clone());
-        
-        output_args.push("--print".to_owned());
-        output_args.push("%(playlist)s".to_owned());
-        output_args.push("--playlist-items=1".to_owned());
-        
-        
-        self.find_yt_dl()?;
-
-        let command_name = self.args.yt_dl_location.clone();
-
-        cnd_print_debug!("Running {} with arguments {:?}", command_name, output_args);
-
-        let ytdl_output = Command::new(&command_name)
-                .args(output_args.clone())
-                .output()?;
-
-
-
-        
-        let playlist_name = str::from_utf8(&ytdl_output.stdout).expect("output should be valid utf-8").trim();
-        
-        stdout().write_all(&ytdl_output.stderr)?;
-
-        
-        if playlist_name == "NA" {
-            return Err(Error::InvalidInput)
-        } else if playlist_name.contains('\n') {
-            panic!();
-        }
-
-
-        match read_dir(playlist_name) {
+        match read_dir(&playlist_name) {
             Ok(directory) => {
                 if directory.count() > 0 {
-                    return Err(Error::AlreadyExists(playlist_name.to_owned()));
+                    return Err(Error::AlreadyExists(playlist_name));
                 } else {
                     cnd_print_debug!("Using existing directory \"{}\"", playlist_name);
                 }
             },
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
-                    create_dir(playlist_name)?;
+                    create_dir(&playlist_name)?;
                     cnd_print_debug!("Created directory \"{}\"", playlist_name);
                 } else {
                     return Err(e.into());
@@ -109,7 +63,7 @@ impl App {
         }
 
         
-        set_current_dir(playlist_name)?;
+        set_current_dir(&playlist_name)?;
         create_dir(".playlist")?;
 
         let mut settings = PlaylistSettings::new(playlist_url.clone(), playlist_name.to_string());
@@ -119,16 +73,36 @@ impl App {
 
         settings.write_to_disk()?;
 
-        let songs = self.fetch_manifest_url(&playlist_name.to_string(), &playlist_url)?;
+        let songs = self.downloader.fetch_playlist_content(&playlist_url, self.args.verbose)?;
         
 
         let song_urls: Vec<String> = songs.iter().map(|f| f.url.clone().expect("song should have url")).collect();
 
-        cnd_print_stdout!("Successfully parsed {} urls from manifest.", song_urls.len());
+        let cnt_items = song_urls.len();
+        cnd_print_stdout!("Successfully parsed {} urls from manifest.", cnt_items);
         cnd_print_debug!("Urls: {:?}", song_urls);
 
         cnd_print_stdout!("Downloading...");
-        self.download(song_urls)?;
+        
+        
+        let failures: Vec<_> = self.downloader.download(song_urls, self.args.threads, self.args.progress, self.args.verbose)?
+                .into_iter().filter_map(|(id, res)| 
+                if let Err(e) = res {
+                    Some((id, e))
+                } else {
+                    None
+                }).collect();
+
+        cnd_print_stdout!("Successfully downloaded {} items.", cnt_items - failures.len());
+
+        if failures.len() > 0 {
+            cnd_print_stdout!("{} items failed to download.", failures.len());
+            if self.args.verbose {
+                for (id, err) in failures {
+                    debug_print!("ID: {id} failed with error: {err}.");
+                }
+            }
+        };
 
 
         Ok(())

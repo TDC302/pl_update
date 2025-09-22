@@ -14,6 +14,7 @@ blocking = "1.4.0"
 chrono = "0.4.38"
 clap = { version = "4.5.18", features = ["derive"] }
 colored = "3.0.0"
+const_format = "0.2.34"
 os_info = "3.8.2"
 regex = "1.10.5"
 serde = "1.0.217"

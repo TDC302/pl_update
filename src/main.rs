@@ -6,6 +6,7 @@ mod string_parsing;
 mod error;
 mod playlist_settings;
 mod app;
+mod downloader;
 
 
 use core::str;
@@ -50,7 +51,7 @@ impl Song {
 }
 
 
-const SEP_CHAR: char = '\x06'; 
+const SEP_CHAR: char = '\x1e'; 
 
 const FILE_EXT: &str = ".mp3";
 

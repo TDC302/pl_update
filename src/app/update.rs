@@ -37,8 +37,6 @@ impl App {
         }
 
 
-        self.find_yt_dl()?;
-    
 
         let current_items_list = self.fetch_manifest_local()?;
 
@@ -50,7 +48,7 @@ impl App {
         cnd_print_stdout!("Updating manifest...");
 
         
-        let updated_items_list = self.fetch_manifest_url(playlist_name, playlist_url)?;
+        let updated_items_list = self.downloader.fetch_playlist_content(playlist_url, self.args.verbose)?;
         
 
         let removed_songs: Vec<_> = 
@@ -74,10 +72,29 @@ impl App {
         cnd_print_debug!("Detected {} items to remove: {:?}", removed_filenames.len(), removed_filenames);
 
 
-        
-        if added_urls.len() > 0 {
+        let cnt_new_items = added_urls.len();
+        if cnt_new_items > 0 {
             cnd_print_stdout!("Downloading {} new items...", added_urls.len());
-            self.download(added_urls)?;
+            let result = self.downloader.download(added_urls, self.args.threads, self.args.progress, self.args.verbose)?;
+            cnd_print_stdout!("Res: {result:?}");
+            let failures: Vec<_> = result.into_iter().filter_map(
+                |(id, res)| 
+                if let Err(e) = res {
+                    Some((id, e))
+                } else {
+                    None
+                }).collect();
+
+            cnd_print_stdout!("Successfully downloaded {} items.", cnt_new_items - failures.len());
+            
+            if failures.len() > 0 {
+                cnd_print_stdout!("{} items failed to download.", failures.len());
+                if self.args.verbose {
+                    for (id, err) in failures {
+                        debug_print!("ID: {id} failed with error: {err}.");
+                    }
+                }
+            }
         } else {
             cnd_print_stdout!("No items to download.");
         }
